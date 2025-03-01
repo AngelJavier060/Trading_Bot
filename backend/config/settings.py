@@ -1,0 +1,1 @@
+SECRET_KEY = "clave_secreta_super_segura"

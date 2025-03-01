@@ -1,0 +1,19 @@
+{
+    "account_type": ["Demo", "Real"],
+    "market_type": ["Binarias", "OTC"],
+    "timeframes": ["1m", "5m", "15m", "1h"],
+    "strategies": ["Simple Moving Average", "RSI", "MACD"],
+    "trading_mode": ["Trader en vivo", "Backtesting"],
+    "risk_parameters": {
+      "default_risk_amount": 100,
+      "max_loss_percentage": 10,
+      "profit_target_percentage": 15
+    },
+    "default_values": {
+      "account_type": "Demo",
+      "market_type": "Binarias",
+      "strategy": "Simple Moving Average",
+      "timeframe": "1m"
+    }
+  }
+  

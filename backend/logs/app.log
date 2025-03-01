@@ -1,0 +1,110 @@
+2024-12-01 11:27:37,003 - __main__ - ERROR - Error al conectar a IQ Option: IQOptionService.__init__() missing 2 required positional arguments: 'username' and 'password'
+2024-12-01 11:27:37,033 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-01 11:27:37,034 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2024-12-01 11:27:37,035 - werkzeug - INFO -  * Restarting with stat
+2024-12-01 11:27:37,276 - __main__ - ERROR - Error al conectar a IQ Option: IQOptionService.__init__() missing 2 required positional arguments: 'username' and 'password'
+2024-12-01 11:27:37,288 - werkzeug - WARNING -  * Debugger is active!
+2024-12-01 11:27:37,291 - werkzeug - INFO -  * Debugger PIN: 897-631-415
+2024-12-01 11:27:54,537 - werkzeug - INFO -  * Detected change in 'D:\\PROGRAMAS CREADOS 2024\\IPOPTION\\IQ_OPTION_BOT\\Backend\\app.py', reloading
+2024-12-01 11:27:54,565 - werkzeug - INFO -  * Restarting with stat
+2024-12-01 11:27:54,815 - __main__ - ERROR - Error al conectar a IQ Option: IQOptionService.__init__() missing 2 required positional arguments: 'username' and 'password'
+2024-12-01 11:27:54,827 - werkzeug - WARNING -  * Debugger is active!
+2024-12-01 11:27:54,829 - werkzeug - INFO -  * Debugger PIN: 897-631-415
+2024-12-01 11:27:56,857 - werkzeug - INFO -  * Detected change in 'D:\\PROGRAMAS CREADOS 2024\\IPOPTION\\IQ_OPTION_BOT\\Backend\\app.py', reloading
+2024-12-01 11:27:56,884 - werkzeug - INFO -  * Restarting with stat
+2024-12-01 11:28:12,367 - __main__ - ERROR - Error al conectar a IQ Option: IQOptionService.__init__() missing 2 required positional arguments: 'username' and 'password'
+2024-12-01 11:28:12,382 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-01 11:28:12,383 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2024-12-01 11:28:12,384 - werkzeug - INFO -  * Restarting with stat
+2024-12-01 11:28:12,629 - __main__ - ERROR - Error al conectar a IQ Option: IQOptionService.__init__() missing 2 required positional arguments: 'username' and 'password'
+2024-12-01 11:28:12,640 - werkzeug - WARNING -  * Debugger is active!
+2024-12-01 11:28:12,642 - werkzeug - INFO -  * Debugger PIN: 897-631-415
+2024-12-01 11:31:09,230 - werkzeug - INFO -  * Detected change in 'D:\\PROGRAMAS CREADOS 2024\\IPOPTION\\IQ_OPTION_BOT\\Backend\\app.py', reloading
+2024-12-01 11:31:09,260 - werkzeug - INFO -  * Restarting with stat
+2024-12-01 11:33:27,336 - INFO - Conexión exitosa a IQ Option.
+2024-12-01 11:33:27,349 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-01 11:33:27,349 - INFO - [33mPress CTRL+C to quit[0m
+2024-12-01 11:33:27,350 - INFO -  * Restarting with stat
+2024-12-01 11:33:29,110 - INFO - Conexión exitosa a IQ Option.
+2024-12-01 11:33:29,119 - WARNING -  * Debugger is active!
+2024-12-01 11:33:29,121 - INFO -  * Debugger PIN: 897-631-415
+2024-12-01 16:09:31,745 - INFO - Conexión exitosa a IQ Option.
+2024-12-01 16:09:31,970 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-01 16:09:31,970 - INFO - [33mPress CTRL+C to quit[0m
+2024-12-01 16:09:31,970 - INFO -  * Restarting with stat
+2024-12-01 16:09:33,654 - INFO - Conexión exitosa a IQ Option.
+2024-12-01 16:09:33,662 - WARNING -  * Debugger is active!
+2024-12-01 16:09:33,664 - INFO -  * Debugger PIN: 401-135-665
+2024-12-01 16:10:40,550 - INFO - Endpoint principal accedido
+2024-12-01 16:10:40,550 - INFO - 127.0.0.1 - - [01/Dec/2024 16:10:40] "GET / HTTP/1.1" 200 -
+2024-12-01 16:10:55,268 - INFO - Información de la cuenta obtenida: {'balance': 9422.35, 'account_type': 'PRACTICE'}
+2024-12-01 16:10:55,269 - INFO - 127.0.0.1 - - [01/Dec/2024 16:10:55] "GET /account-info HTTP/1.1" 200 -
+2024-12-01 16:11:11,716 - INFO - Datos recibidos para compra: {'activo': 'EURUSD-OTC', 'cantidad': 10, 'direccion': 'call', 'expiracion': 5}
+2024-12-01 16:11:12,352 - INFO - Resultado de la compra: (True, 12167324985)
+2024-12-01 16:11:12,353 - INFO - 127.0.0.1 - - [01/Dec/2024 16:11:12] "POST /comprar HTTP/1.1" 200 -
+2024-12-01 16:11:44,691 - INFO - Datos recibidos para venta: {'id_operacion': 12345}
+2024-12-01 16:11:44,691 - ERROR - Error al realizar la venta: 'IQ_Option' object has no attribute 'sell'
+2024-12-01 16:11:44,692 - INFO - 127.0.0.1 - - [01/Dec/2024 16:11:44] "[35m[1mPOST /vender HTTP/1.1[0m" 500 -
+2024-12-01 16:27:14,379 - INFO - 127.0.0.1 - - [01/Dec/2024 16:27:14] "[31m[1mPOST / HTTP/1.1[0m" 405 -
+2024-12-01 16:39:10,933 - INFO - Conexión exitosa a IQ Option.
+2024-12-01 16:39:10,946 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-01 16:39:10,946 - INFO - [33mPress CTRL+C to quit[0m
+2024-12-01 16:39:10,947 - INFO -  * Restarting with stat
+2024-12-01 16:39:13,052 - INFO - Conexión exitosa a IQ Option.
+2024-12-01 16:39:13,061 - WARNING -  * Debugger is active!
+2024-12-01 16:39:13,063 - INFO -  * Debugger PIN: 401-135-665
+2024-12-01 16:39:33,488 - INFO - Información de la cuenta obtenida: {'balance': 9412.35, 'account_type': 'PRACTICE'}
+2024-12-01 16:39:33,489 - INFO - 127.0.0.1 - - [01/Dec/2024 16:39:33] "GET /account-info HTTP/1.1" 200 -
+2024-12-01 16:47:56,571 - INFO - 127.0.0.1 - - [01/Dec/2024 16:47:56] "[33mPOST /login/ HTTP/1.1[0m" 404 -
+2024-12-01 16:48:54,026 - INFO - 127.0.0.1 - - [01/Dec/2024 16:48:54] "[33mPOST /login/ HTTP/1.1[0m" 404 -
+2024-12-01 16:51:41,976 - INFO - 127.0.0.1 - - [01/Dec/2024 16:51:41] "[33mOPTIONS /login/ HTTP/1.1[0m" 404 -
+2024-12-01 16:52:02,652 - INFO - 127.0.0.1 - - [01/Dec/2024 16:52:02] "[33mPOST /login/ HTTP/1.1[0m" 404 -
+2024-12-01 16:53:37,966 - INFO - Endpoint principal accedido
+2024-12-01 16:53:37,966 - INFO - 127.0.0.1 - - [01/Dec/2024 16:53:37] "GET / HTTP/1.1" 200 -
+2024-12-01 16:54:06,642 - INFO - 127.0.0.1 - - [01/Dec/2024 16:54:06] "[33mPOST /login/ HTTP/1.1[0m" 404 -
+2024-12-01 16:56:12,565 - INFO -  * Detected change in 'D:\\PROGRAMAS CREADOS 2024\\IPOPTION\\IQ_OPTION_BOT\\backend\\app.py', reloading
+2024-12-01 16:56:13,146 - INFO -  * Restarting with stat
+2024-12-01 16:58:42,565 - INFO - Conexión exitosa a IQ Option.
+2024-12-01 16:58:42,577 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-01 16:58:42,577 - INFO - [33mPress CTRL+C to quit[0m
+2024-12-01 16:58:42,578 - INFO -  * Restarting with stat
+2024-12-01 16:58:45,227 - INFO - Conexión exitosa a IQ Option.
+2024-12-01 16:58:45,236 - WARNING -  * Debugger is active!
+2024-12-01 16:58:45,238 - INFO -  * Debugger PIN: 401-135-665
+2024-12-01 16:58:48,145 - INFO - 127.0.0.1 - - [01/Dec/2024 16:58:48] "[31m[1mPOST / HTTP/1.1[0m" 405 -
+2024-12-01 16:59:04,483 - INFO - 127.0.0.1 - - [01/Dec/2024 16:59:04] "[31m[1mPOST / HTTP/1.1[0m" 405 -
+2024-12-01 16:59:19,850 - INFO - Endpoint principal accedido
+2024-12-01 16:59:19,850 - INFO - 127.0.0.1 - - [01/Dec/2024 16:59:19] "GET / HTTP/1.1" 200 -
+2024-12-01 16:59:21,577 - INFO - Endpoint principal accedido
+2024-12-01 16:59:21,577 - INFO - 127.0.0.1 - - [01/Dec/2024 16:59:21] "GET / HTTP/1.1" 200 -
+2024-12-01 17:00:13,272 - INFO - 127.0.0.1 - - [01/Dec/2024 17:00:13] "OPTIONS /login/ HTTP/1.1" 200 -
+2024-12-01 17:01:10,829 - INFO - 127.0.0.1 - - [01/Dec/2024 17:01:10] "[31m[1mPOST / HTTP/1.1[0m" 405 -
+2024-12-01 17:01:14,815 - INFO - Endpoint principal accedido
+2024-12-01 17:01:14,815 - INFO - 127.0.0.1 - - [01/Dec/2024 17:01:14] "GET / HTTP/1.1" 200 -
+2024-12-01 17:02:55,536 - INFO -  * Detected change in 'D:\\PROGRAMAS CREADOS 2024\\IPOPTION\\IQ_OPTION_BOT\\backend\\app.py', reloading
+2024-12-01 17:02:56,090 - INFO -  * Restarting with stat
+2024-12-01 17:03:44,979 - INFO - Conexión exitosa a IQ Option.
+2024-12-01 17:03:44,991 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2024-12-01 17:03:44,992 - INFO - [33mPress CTRL+C to quit[0m
+2024-12-01 17:03:44,992 - INFO -  * Restarting with stat
+2024-12-01 17:03:46,982 - INFO - Conexión exitosa a IQ Option.
+2024-12-01 17:03:46,991 - WARNING -  * Debugger is active!
+2024-12-01 17:03:46,993 - INFO -  * Debugger PIN: 401-135-665
+2024-12-01 17:03:56,974 - WARNING - Credenciales inválidas
+2024-12-01 17:03:56,975 - INFO - 127.0.0.1 - - [01/Dec/2024 17:03:56] "[31m[1mPOST /login/ HTTP/1.1[0m" 401 -
+2024-12-01 17:05:49,998 - INFO - Inicio de sesión exitoso
+2024-12-01 17:05:49,998 - INFO - 127.0.0.1 - - [01/Dec/2024 17:05:49] "POST /login/ HTTP/1.1" 200 -
+2024-12-01 17:08:19,440 - INFO - 127.0.0.1 - - [01/Dec/2024 17:08:19] "OPTIONS /login/ HTTP/1.1" 200 -
+2024-12-01 17:08:19,442 - INFO - Inicio de sesión exitoso
+2024-12-01 17:08:19,442 - INFO - 127.0.0.1 - - [01/Dec/2024 17:08:19] "POST /login/ HTTP/1.1" 200 -
+2024-12-01 17:08:19,445 - ERROR - Faltan credenciales en la solicitud.
+2024-12-01 17:08:19,445 - INFO - 127.0.0.1 - - [01/Dec/2024 17:08:19] "[31m[1mPOST /login/ HTTP/1.1[0m" 400 -
+2024-12-01 17:08:49,823 - INFO -  * Detected change in 'D:\\PROGRAMAS CREADOS 2024\\IPOPTION\\IQ_OPTION_BOT\\backend\\app.py', reloading
+2024-12-01 17:08:50,399 - INFO -  * Restarting with stat

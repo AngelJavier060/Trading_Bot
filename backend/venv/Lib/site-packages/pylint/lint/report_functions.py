@@ -6,11 +6,9 @@ from __future__ import annotations
 
 import collections
 from collections import defaultdict
-from typing import cast
 
 from pylint import checkers, exceptions
 from pylint.reporters.ureports.nodes import Section, Table
-from pylint.typing import MessageTypesFullName
 from pylint.utils import LinterStats
 
 
@@ -32,14 +30,15 @@ def report_messages_stats(
 ) -> None:
     """Make messages type report."""
     by_msg_stats = stats.by_msg
-    in_order = sorted(
-        (value, msg_id)
-        for msg_id, value in by_msg_stats.items()
-        if not msg_id.startswith("I")
-    )
-    in_order.reverse()
     lines = ["message id", "occurrences"]
-    for value, msg_id in in_order:
+    for value, msg_id in sorted(
+        (
+            (value, msg_id)
+            for msg_id, value in by_msg_stats.items()
+            if not msg_id.startswith("I")
+        ),
+        reverse=True,
+    ):
         lines += [msg_id, str(value)]
     sect.append(Table(children=lines, cols=2, rheaders=1))
 
@@ -56,7 +55,6 @@ def report_messages_by_module_stats(
         raise exceptions.EmptyReportError()
     by_mod: defaultdict[str, dict[str, int | float]] = collections.defaultdict(dict)
     for m_type in ("fatal", "error", "warning", "refactor", "convention"):
-        m_type = cast(MessageTypesFullName, m_type)
         total = stats.get_global_message_count(m_type)
         for module in module_stats.keys():
             mod_total = stats.get_module_message_count(module, m_type)
@@ -73,8 +71,7 @@ def report_messages_by_module_stats(
                 module,
             )
         )
-    sorted_result.sort()
-    sorted_result.reverse()
+    sorted_result.sort(reverse=True)
     lines = ["module", "error", "warning", "refactor", "convention"]
     for line in sorted_result:
         # Don't report clean modules.

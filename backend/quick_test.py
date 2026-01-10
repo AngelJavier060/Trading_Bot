@@ -1,5 +1,6 @@
 import requests
 import time
+import os
 
 def test_api():
     BASE_URL = 'http://127.0.0.1:5000'
@@ -33,16 +34,23 @@ def test_api():
     try_request('/api/trading/test')
 
     # 4. Probar conexión a IQ Option
-    credentials = {
-        "platform": "iqoption",
-        "credentials": {
-            "email": "javierangelmsn@outlook.es",
-            "password": "Alexandra1"
-        },
-        "platform_type": "iqoption"
-    }
-    
-    try_request('/api/trading/connect', 'post', credentials)
+    email = os.getenv("IQ_OPTION_EMAIL")
+    password = os.getenv("IQ_OPTION_PASSWORD")
+
+    if not email or not password:
+        print("⚠️ Credenciales IQ_OPTION_EMAIL/IQ_OPTION_PASSWORD no configuradas. "
+              "No se probará la conexión a IQ Option.")
+    else:
+        credentials = {
+            "platform": "iqoption",
+            "credentials": {
+                "email": email,
+                "password": password
+            },
+            "platform_type": "iqoption"
+        }
+        
+        try_request('/api/trading/connect', 'post', credentials)
 
 if __name__ == "__main__":
-    test_api() 
+    test_api()

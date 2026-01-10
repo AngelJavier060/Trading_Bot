@@ -3,6 +3,9 @@ import logging
 from datetime import datetime
 import MetaTrader5 as mt5
 import pandas as pd
+from services.trading_service import trading_service
+from api.utils.validators import validate_schema
+from models.schemas import ConnectSchema
 
 # Ejemplo de configuración para Admiral Markets
 ADMIRAL_SERVERS = {
@@ -12,30 +15,26 @@ ADMIRAL_SERVERS = {
 
 class MT5Controller:
     def __init__(self):
-        self.connected = False
         self.current_account = None
         
-    def connect(self):
+    @property
+    def connected(self) -> bool:
+        return trading_service.get_mt5() is not None
+
+    @validate_schema(ConnectSchema)
+    def connect(self, validated_data: ConnectSchema):
         try:
-            data = request.json
-            credentials = data.get('credentials', {})
+            credentials = validated_data.credentials
             
-            login = int(credentials.get('login'))
-            password = credentials.get('password')
-            is_demo = credentials.get('is_demo', True)
+            login = credentials.login
+            password = credentials.password
+            is_demo = validated_data.is_demo
             
+            if login is None or not password:
+                return jsonify({'error': 'Credenciales incompletas (login y password requeridos)'}), 400
+
             server = ADMIRAL_SERVERS['demo'] if is_demo else ADMIRAL_SERVERS['real']
             
-            if not all([login, password]):
-                return jsonify({'error': 'Credenciales incompletas'}), 400
-
-            # Verificar si MT5 está instalado
-            if not mt5.__file__:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'MetaTrader 5 no está instalado. Por favor, instálalo primero.'
-                }), 500
-
             # Inicializar MT5
             if not mt5.initialize():
                 return jsonify({
@@ -66,7 +65,6 @@ class MT5Controller:
                     'message': 'No se pudo obtener información de la cuenta'
                 }), 500
 
-            self.connected = True
             self.current_account = {
                 'login': login,
                 'server': server,
@@ -79,6 +77,9 @@ class MT5Controller:
                 'account_type': 'DEMO' if is_demo else 'REAL'
             }
 
+            # Guardar en el servicio centralizado
+            trading_service.set_mt5(self.current_account)
+
             return jsonify({
                 'status': 'connected',
                 'message': f'Conexión exitosa con Admiral Markets ({self.current_account["account_type"]})',
@@ -87,8 +88,6 @@ class MT5Controller:
 
         except Exception as e:
             logging.error(f"Error en la conexión MT5: {str(e)}")
-            if mt5.initialize():
-                mt5.shutdown()
             return jsonify({
                 'status': 'error',
                 'message': f'Error al conectar: {str(e)}'
@@ -96,9 +95,7 @@ class MT5Controller:
 
     def disconnect(self):
         try:
-            if mt5.initialize():
-                mt5.shutdown()
-            self.connected = False
+            trading_service.disconnect_all()
             self.current_account = None
             return jsonify({
                 'status': 'success',
@@ -133,13 +130,21 @@ class MT5Controller:
                 'message': str(e)
             }), 500
 
-    def get_historical_data(self, symbol, timeframe, n_candles=1000):
+    def get_historical_data(self):
         try:
             if not self.connected:
                 return jsonify({
                     'status': 'error',
                     'message': 'No hay conexión activa'
                 }), 400
+
+            data = request.args
+            symbol = data.get('symbol')
+            timeframe = data.get('timeframe', '1h')
+            n_candles = int(data.get('n_candles', 1000))
+
+            if not symbol:
+                return jsonify({'error': 'Símbolo es requerido'}), 400
 
             # Mapeo de timeframes
             timeframe_map = {
@@ -175,4 +180,4 @@ class MT5Controller:
             return jsonify({
                 'status': 'error',
                 'message': str(e)
-            }), 500 
+            }), 500

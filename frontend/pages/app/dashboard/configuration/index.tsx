@@ -163,7 +163,7 @@ const Configuration = () => {
                             <p><strong>Tipo de cuenta:</strong> {accountInfo.account_type}</p>
                             <p><strong>Balance:</strong> ${accountInfo.balance.toFixed(2)}</p>
                             <p><strong>Moneda:</strong> {accountInfo.currency}</p>
-                            <p><strong>Última actualización:</strong> {accountInfo.server_time}</p>
+                            <p><strong>Última actualización:</strong> {new Date().toLocaleString()}</p>
                         </div>
                     )}
                 </div>

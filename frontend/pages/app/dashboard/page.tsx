@@ -1,213 +1,235 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { toast, ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-import AccountInfo from './AccountInfo';
-import AccountTypeSelector from './AccountTypeSelector';
-import Configuration from './configuration/componentA';
+import api from '../../../services/api';
 import Signals from './Signals';
 
-interface Estado {
-    tipoCuenta: string;
+interface AccountInfo {
+    account_type: string;
     balance: number;
-    divisas: string[];
-    divisasSeleccionadas: string[];
-    temporalidadesSeleccionadas: string[];
-    estrategiasSeleccionadas: string[];
-    señales: any[];
-    tipoMercado: string;
+    currency?: string;
+    email?: string;
+}
+
+interface DashboardState {
+    accountInfo: AccountInfo | null;
+    isConnected: boolean;
+    assets: string[];
+    loading: boolean;
+    error: string | null;
 }
 
 export default function Dashboard() {
-    const [estado, setEstado] = useState<Estado>({
-        tipoCuenta: '',
-        balance: 0,
-        divisas: [],
-        divisasSeleccionadas: [],
-        temporalidadesSeleccionadas: [],
-        estrategiasSeleccionadas: [],
-        señales: [],
-        tipoMercado: '',
+    const [state, setState] = useState<DashboardState>({
+        accountInfo: null,
+        isConnected: false,
+        assets: [],
+        loading: true,
+        error: null,
     });
-    const [cargando, setCargando] = useState(true); // Estado general de carga
     const router = useRouter();
 
-    // Verificar y validar el token
-    const verificarToken = (): boolean => {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            toast.error('Token no encontrado. Redirigiendo al inicio...');
-            router.push('/');
-            return false;
-        }
-
+    const checkConnection = useCallback(async () => {
         try {
-            const decoded: any = JSON.parse(atob(token.split('.')[1])); // Decodificar JWT
-            const currentTime = Date.now() / 1000; // Tiempo actual en segundos
-            if (decoded.exp < currentTime) {
-                toast.error('Tu sesión ha expirado. Redirigiendo al inicio...');
-                localStorage.removeItem('token');
-                router.push('/');
-                return false;
-            }
-        } catch (error) {
-            toast.error('Token inválido. Redirigiendo al inicio...');
-            localStorage.removeItem('token');
-            router.push('/');
-            return false;
-        }
-        return true;
-    };
+            const response = await api.checkConnection();
+            if (response.status === 'connected') {
+                setState((prev) => ({ ...prev, isConnected: true }));
+                
+                // Obtener info de cuenta
+                try {
+                    const accountInfo = await api.getAccountInfo();
+                    setState((prev) => ({ ...prev, accountInfo }));
+                } catch (e) {
+                    console.log('No se pudo obtener info de cuenta');
+                }
 
-    // Fetch Helper reutilizable con validación y reintentos
-    const fetchWithRetry = async (url: string, options: RequestInit, retries: number = 3) => {
-        if (!verificarToken()) return null;
-
-        for (let i = 0; i < retries; i++) {
-            try {
-                const res = await fetch(url, options);
-                if (res.ok) return await res.json();
-                console.error(`Error HTTP: ${res.status} ${res.statusText}`);
-            } catch (error) {
-                console.error(`Intento ${i + 1} fallido:`, error);
-            }
-            await new Promise((resolve) => setTimeout(resolve, 1000)); // Esperar antes de reintentar
-        }
-        throw new Error('No se pudo completar la solicitud después de varios intentos.');
-    };
-
-    // Manejar errores del backend
-    const manejarErrores = (mensajeError: string) => {
-        if (mensajeError === 'El token ha expirado' || mensajeError === 'Token inválido') {
-            toast.error('Tu sesión ha expirado. Por favor, inicia sesión nuevamente.');
-            localStorage.removeItem('token');
-            router.push('/');
-        } else {
-            toast.error(mensajeError || 'Ocurrió un error inesperado.');
-        }
-    };
-
-    // Obtener información de la cuenta
-    const obtenerCuenta = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            const data = await fetchWithRetry(`${process.env.NEXT_PUBLIC_API_URL}/account`, {
-                method: 'GET',
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (data?.status === 'success') {
-                setEstado((prev) => ({
-                    ...prev,
-                    tipoCuenta: data.account_type,
-                    balance: data.balance,
-                }));
-                toast.success('Datos de la cuenta cargados correctamente.');
+                // Obtener activos disponibles
+                try {
+                    const assetsData = await api.getAssets();
+                    if (assetsData.activos) {
+                        setState((prev) => ({ 
+                            ...prev, 
+                            assets: Object.keys(assetsData.activos).filter(
+                                (a) => assetsData.activos[a].open
+                            )
+                        }));
+                    }
+                } catch (e) {
+                    console.log('No se pudieron obtener activos');
+                }
             } else {
-                manejarErrores(data?.message || 'Error al obtener datos de la cuenta.');
+                setState((prev) => ({ ...prev, isConnected: false }));
             }
         } catch (error) {
-            console.error('Error al obtener datos de la cuenta:', error);
-            toast.error('Error al conectar con el servidor.');
-        }
-    };
-
-    // Obtener divisas disponibles
-    const obtenerDivisas = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            const data = await fetchWithRetry(`${process.env.NEXT_PUBLIC_API_URL}/account/currencies`, {
-                method: 'GET',
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (data?.status === 'success') {
-                setEstado((prev) => ({ ...prev, divisas: data.currencies }));
-                toast.success('Divisas cargadas correctamente.');
-            } else {
-                manejarErrores(data?.message || 'Error al obtener las divisas.');
-            }
-        } catch (error) {
-            console.error('Error al obtener divisas:', error);
-            toast.error('Error al conectar con el servidor para obtener divisas.');
-        }
-    };
-
-    // Cambiar tipo de cuenta
-    const cambiarTipoCuenta = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/account/set_account_type`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ account_type: estado.tipoCuenta }),
-            });
-            const data = await res.json();
-            if (data?.status === 'success') {
-                toast.success(`Tipo de cuenta cambiado a ${estado.tipoCuenta}`);
-                obtenerCuenta();
-            } else {
-                manejarErrores(data?.message || 'Error al cambiar el tipo de cuenta.');
-            }
-        } catch (error) {
-            console.error('Error al cambiar tipo de cuenta:', error);
-            toast.error('Error al conectar con el servidor.');
-        }
-    };
-
-    // Aplicar estrategias
-    const aplicarEstrategias = async () => {
-        // Implementación de aplicarEstrategias
-    };
-
-    // Cargar datos iniciales
-    useEffect(() => {
-        if (verificarToken()) {
-            Promise.all([obtenerCuenta(), obtenerDivisas()])
-                .catch((error) => console.error('Error al cargar datos iniciales:', error))
-                .finally(() => setCargando(false));
+            setState((prev) => ({ ...prev, isConnected: false }));
+        } finally {
+            setState((prev) => ({ ...prev, loading: false }));
         }
     }, []);
 
+    useEffect(() => {
+        checkConnection();
+        const interval = setInterval(checkConnection, 30000);
+        return () => clearInterval(interval);
+    }, [checkConnection]);
+
+    const handleDisconnect = async () => {
+        try {
+            await api.disconnect();
+            setState((prev) => ({ 
+                ...prev, 
+                isConnected: false, 
+                accountInfo: null,
+                assets: []
+            }));
+        } catch (error) {
+            console.error('Error al desconectar:', error);
+        }
+    };
+
+    const navigateTo = (path: string) => {
+        router.push(path);
+    };
+
+    if (state.loading) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Cargando dashboard...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="bg-gradient-to-br from-white to-blue-500 min-h-screen text-gray-800">
-            <ToastContainer position="top-right" autoClose={3000} />
-            <header className="bg-white shadow-md p-4 flex justify-between items-center">
-                <h1 className="text-2xl font-bold">Dashboard</h1>
-                <button
-                    className="bg-red-500 text-white px-4 py-2 rounded"
-                    onClick={() => {
-                        localStorage.removeItem('token');
-                        router.push('/');
-                    }}
-                >
-                    Salir
-                </button>
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+            {/* Header */}
+            <header className="bg-white shadow-sm border-b">
+                <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+                    <div className="flex items-center gap-4">
+                        <h1 className="text-2xl font-bold text-gray-800">🤖 Trading Bot IA</h1>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                            state.isConnected 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-red-100 text-red-700'
+                        }`}>
+                            {state.isConnected ? '● Conectado' : '○ Desconectado'}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {state.isConnected && (
+                            <button
+                                onClick={handleDisconnect}
+                                className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                                Desconectar
+                            </button>
+                        )}
+                        <button
+                            onClick={() => navigateTo('/app/dashboard/configuration')}
+                            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            ⚙️ Configuración
+                        </button>
+                    </div>
+                </div>
             </header>
-            <main className="p-4 flex flex-col items-center">
-                {cargando ? (
-                    <p className="animate-pulse">Cargando datos...</p>
+
+            <main className="max-w-7xl mx-auto px-4 py-6">
+                {/* Account Info Card */}
+                {state.accountInfo && (
+                    <div className="bg-white rounded-xl shadow-md p-6 mb-6">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="text-center p-4 bg-blue-50 rounded-lg">
+                                <p className="text-xs text-gray-500 uppercase mb-1">Tipo de Cuenta</p>
+                                <p className={`text-xl font-bold ${
+                                    state.accountInfo.account_type === 'REAL' 
+                                        ? 'text-green-600' 
+                                        : 'text-blue-600'
+                                }`}>
+                                    {state.accountInfo.account_type}
+                                </p>
+                            </div>
+                            <div className="text-center p-4 bg-green-50 rounded-lg">
+                                <p className="text-xs text-gray-500 uppercase mb-1">Balance</p>
+                                <p className="text-xl font-bold text-green-600">
+                                    ${state.accountInfo.balance?.toFixed(2) || '0.00'}
+                                </p>
+                            </div>
+                            <div className="text-center p-4 bg-purple-50 rounded-lg">
+                                <p className="text-xs text-gray-500 uppercase mb-1">Moneda</p>
+                                <p className="text-xl font-bold text-purple-600">
+                                    {state.accountInfo.currency || 'USD'}
+                                </p>
+                            </div>
+                            <div className="text-center p-4 bg-orange-50 rounded-lg">
+                                <p className="text-xs text-gray-500 uppercase mb-1">Activos Disponibles</p>
+                                <p className="text-xl font-bold text-orange-600">
+                                    {state.assets.length}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Quick Actions */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <button
+                        onClick={() => navigateTo('/app/dashboard/trading/live')}
+                        className="p-6 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all group"
+                    >
+                        <span className="text-3xl mb-2 block">📊</span>
+                        <span className="font-bold">Trading en Vivo</span>
+                        <p className="text-xs text-blue-100 mt-1">Operar en tiempo real</p>
+                    </button>
+                    
+                    <button
+                        onClick={() => navigateTo('/app/dashboard/trading/history')}
+                        className="p-6 bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
+                    >
+                        <span className="text-3xl mb-2 block">📜</span>
+                        <span className="font-bold">Historial</span>
+                        <p className="text-xs text-purple-100 mt-1">Ver operaciones pasadas</p>
+                    </button>
+                    
+                    <button
+                        onClick={() => navigateTo('/app/dashboard/backtesting')}
+                        className="p-6 bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
+                    >
+                        <span className="text-3xl mb-2 block">🧪</span>
+                        <span className="font-bold">Backtesting</span>
+                        <p className="text-xs text-green-100 mt-1">Probar estrategias</p>
+                    </button>
+                    
+                    <button
+                        onClick={() => navigateTo('/app/dashboard/reports')}
+                        className="p-6 bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
+                    >
+                        <span className="text-3xl mb-2 block">📈</span>
+                        <span className="font-bold">Reportes</span>
+                        <p className="text-xs text-orange-100 mt-1">Estadísticas y métricas</p>
+                    </button>
+                </div>
+
+                {/* Signals Section */}
+                {state.isConnected ? (
+                    <Signals />
                 ) : (
-                    <>
-                        <AccountInfo tipoCuenta={estado.tipoCuenta} balance={estado.balance} />
-                        <AccountTypeSelector
-                            tipoCuenta={estado.tipoCuenta}
-                            setTipoCuenta={(tipo: string) =>
-                                setEstado((prev) => ({ ...prev, tipoCuenta: tipo }))
-                            }
-                            cambiarTipoCuenta={cambiarTipoCuenta}
-                            cargando={cargando}
-                        />
-                        <Configuration
-                            estado={estado}
-                            setEstado={setEstado}
-                            aplicarEstrategias={aplicarEstrategias}
-                        />
-                        <Signals señales={estado.señales} />
-                    </>
+                    <div className="bg-white rounded-xl shadow-md p-12 text-center">
+                        <span className="text-6xl mb-4 block">🔌</span>
+                        <h2 className="text-xl font-bold text-gray-700 mb-2">No hay conexión activa</h2>
+                        <p className="text-gray-500 mb-6">
+                            Conecta tu cuenta de trading para ver señales y operar
+                        </p>
+                        <button
+                            onClick={() => navigateTo('/app/dashboard/configuration')}
+                            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                        >
+                            Ir a Configuración
+                        </button>
+                    </div>
                 )}
             </main>
         </div>

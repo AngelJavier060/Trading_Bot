@@ -49,7 +49,7 @@ const Dashboard = () => {
     plugins: {
       legend: {
         display: true,
-        position: "top",
+        position: 'top' as const,
       },
       title: {
         display: true,
@@ -90,7 +90,7 @@ const Dashboard = () => {
     plugins: {
       legend: {
         display: true,
-        position: "bottom",
+        position: 'bottom' as const,
       },
     },
   };

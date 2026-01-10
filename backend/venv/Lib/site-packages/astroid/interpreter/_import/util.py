@@ -7,7 +7,7 @@ from __future__ import annotations
 import pathlib
 import sys
 from functools import lru_cache
-from importlib._bootstrap_external import _NamespacePath
+from importlib._bootstrap_external import _NamespacePath  # type: ignore[attr-defined]
 from importlib.util import _find_spec_from_path  # type: ignore[attr-defined]
 
 from astroid.const import IS_PYPY
@@ -83,7 +83,6 @@ def is_namespace(modname: str) -> bool:
 
             # Repair last_submodule_search_locations
             if last_submodule_search_locations:
-                # pylint: disable=unsubscriptable-object
                 last_item = last_submodule_search_locations[-1]
                 # e.g. for failure example above, add 'a/b' and keep going
                 # so that find_spec('a.b.c', path=['a', 'a/b']) succeeds

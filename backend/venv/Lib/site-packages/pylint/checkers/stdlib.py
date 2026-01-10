@@ -92,9 +92,14 @@ DEPRECATED_ARGUMENTS: dict[
         "coroutine.throw": ((1, "value"), (2, "traceback")),
         "email.utils.localtime": ((1, "isdst"),),
         "shutil.rmtree": ((2, "onerror"),),
+        "sysconfig.is_python_build": ((0, "check_home"),),
     },
     (3, 13, 0): {
         "dis.get_instructions": ((2, "show_caches"),),
+    },
+    (3, 14, 0): {
+        "argparse.ArgumentParser.add_argument_group": ((None, "prefix_chars"),),
+        "threading.RLock": ((0, "x"),),
     },
 }
 
@@ -238,13 +243,6 @@ DEPRECATED_METHODS: dict[int, DeprecationDict] = {
             "binascii.a2b_hqx",
             "binascii.rlecode_hqx",
             "binascii.rledecode_hqx",
-            "importlib.resources.contents",
-            "importlib.resources.is_resource",
-            "importlib.resources.open_binary",
-            "importlib.resources.open_text",
-            "importlib.resources.path",
-            "importlib.resources.read_binary",
-            "importlib.resources.read_text",
         },
         (3, 10, 0): {
             "_sqlite3.enable_shared_cache",
@@ -264,6 +262,7 @@ DEPRECATED_METHODS: dict[int, DeprecationDict] = {
             "cgi.log",
         },
         (3, 11, 0): {
+            "importlib.resources.contents",
             "locale.getdefaultlocale",
             "locale.resetlocale",
             "re.template",
@@ -301,6 +300,15 @@ DEPRECATED_METHODS: dict[int, DeprecationDict] = {
             "wave.Wave_write.getmark",
             "wave.Wave_write.getmarkers",
             "wave.Wave_write.setmark",
+        },
+        (3, 14, 0): {
+            "asyncio.iscoroutinefunction",
+            "asyncio.get_event_loop_policy",
+            "asyncio.set_event_loop_policy",
+            "codecs.open",
+            "symtable.Class.get_methods",
+            "sys._clear_type_cache",
+            "sysconfig.expand_makefile_vars",
         },
     },
 }
@@ -400,6 +408,23 @@ DEPRECATED_CLASSES: dict[tuple[int, int, int], dict[str, set[str]]] = {
         },
         "http.server": {
             "CGIHTTPRequestHandler",
+        },
+    },
+    (3, 14, 0): {
+        "argparse": {
+            "FileType",
+        },
+        "asyncio": {
+            "AbstractEventLoopPolicy",
+            "DefaultEventLoopPolicy",
+            "WindowsSelectorEventLoopPolicy",
+            "WindowsProactorEventLoopPolicy",
+        },
+        "shutil": {
+            "ExecError",
+        },
+        "typing": {
+            "._UnionGenericAlias",
         },
     },
 }
@@ -610,7 +635,7 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         if "target" in func_kwargs:
             return
 
-        if len(node.args) < 2 and (not node.kwargs or "target" not in func_kwargs):
+        if len(node.args) < 2 and not (node.kwargs and "target" in func_kwargs):
             self.add_message(
                 "bad-thread-instantiation", node=node, confidence=interfaces.HIGH
             )
@@ -852,26 +877,26 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
                     confidence=confidence,
                 )
 
-        if (
-            not mode_arg
-            or isinstance(mode_arg, nodes.Const)
-            and (not mode_arg.value or "b" not in str(mode_arg.value))
+        if not mode_arg or (
+            isinstance(mode_arg, nodes.Const)
+            and not (mode_arg.value and "b" in str(mode_arg.value))
         ):
             confidence = HIGH
             try:
                 if open_module in PATHLIB_MODULE:
-                    if node.func.attrname == "read_text":
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=0, keyword="encoding"
-                        )
-                    elif node.func.attrname == "write_text":
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=1, keyword="encoding"
-                        )
-                    else:
-                        encoding_arg = utils.get_argument_from_call(
-                            node, position=2, keyword="encoding"
-                        )
+                    match node.func.attrname:
+                        case "read_text":
+                            encoding_arg = utils.get_argument_from_call(
+                                node, position=0, keyword="encoding"
+                            )
+                        case "write_text":
+                            encoding_arg = utils.get_argument_from_call(
+                                node, position=1, keyword="encoding"
+                            )
+                        case _:
+                            encoding_arg = utils.get_argument_from_call(
+                                node, position=2, keyword="encoding"
+                            )
                 else:
                     encoding_arg = utils.get_argument_from_call(
                         node, position=3, keyword="encoding"
@@ -946,10 +971,13 @@ class StdlibChecker(DeprecatedMixin, BaseChecker):
         name = infer.qname()
         if isinstance(call_arg, nodes.Const):
             emit = False
-            if call_arg.value is None:
-                emit = not allow_none
-            elif not isinstance(call_arg.value, str):
-                emit = True
+            match call_arg.value:
+                case None:
+                    emit = not allow_none
+                case str():
+                    pass
+                case _:
+                    emit = True
             if emit:
                 self.add_message(message, node=node, args=(name, call_arg.pytype()))
         else:

@@ -18,7 +18,4 @@ def get_symbols():
 
 @mt5_bp.route('/historical-data', methods=['GET'])
 def get_historical_data():
-    symbol = request.args.get('symbol', 'EURUSD')
-    timeframe = request.args.get('timeframe', '1h')
-    n_candles = int(request.args.get('n_candles', 1000))
-    return controller.get_historical_data(symbol, timeframe, n_candles) 
+    return controller.get_historical_data()

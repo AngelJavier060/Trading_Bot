@@ -6,11 +6,11 @@ from __future__ import annotations
 
 __all__ = [
     "__version__",
-    "version",
     "modify_sys_path",
     "run_pylint",
-    "run_symilar",
     "run_pyreverse",
+    "run_symilar",
+    "version",
 ]
 
 import os
@@ -53,7 +53,7 @@ def run_pyreverse(argv: Sequence[str] | None = None) -> NoReturn:
     """
     from pylint.pyreverse.main import Run as PyreverseRun
 
-    PyreverseRun(argv or sys.argv[1:])
+    sys.exit(PyreverseRun(argv or sys.argv[1:]).run())
 
 
 def run_symilar(argv: Sequence[str] | None = None) -> NoReturn:
@@ -112,7 +112,7 @@ def _catch_valueerror(unraisable: sys.UnraisableHookArgs) -> None:  # pragma: no
     sys.__unraisablehook__(unraisable)
 
 
-if (3, 12, 0) <= sys.version_info[:3] < (3, 12, 3):
+if (3, 12, 0) <= sys.version_info[:3] < (3, 12, 3) or sys.version_info >= (3, 12, 5):
     sys.unraisablehook = _catch_valueerror
 
 

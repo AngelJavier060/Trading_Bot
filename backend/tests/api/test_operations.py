@@ -1,8 +1,9 @@
 from iqoptionapi.stable_api import IQ_Option
+import os
 
 # Credenciales de IQ Option
-USERNAME = "javierangelmsn@outlook.es"  # Reemplaza con tu correo
-PASSWORD = "Alexandra1"  # Reemplaza con tu contraseña
+USERNAME = os.getenv("IQ_OPTION_EMAIL", "")  # Reemplaza con tu correo
+PASSWORD = os.getenv("IQ_OPTION_PASSWORD", "")  # Reemplaza con tu contraseña
 
 def test_connection():
     try:

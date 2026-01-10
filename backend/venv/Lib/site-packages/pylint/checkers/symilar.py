@@ -41,7 +41,7 @@ from collections import defaultdict
 from collections.abc import Callable, Generator, Iterable, Sequence
 from io import BufferedIOBase, BufferedReader, BytesIO
 from itertools import chain
-from typing import TYPE_CHECKING, NamedTuple, NewType, NoReturn, TextIO, Union
+from typing import TYPE_CHECKING, NamedTuple, NewType, NoReturn, TextIO, TypeAlias
 
 import astroid
 from astroid import nodes
@@ -79,7 +79,7 @@ HashToIndex_T = dict["LinesChunk", list[Index]]
 IndexToLines_T = dict[Index, "SuccessiveLinesLimits"]
 
 # The types the streams read by pylint can take. Originating from astroid.nodes.Module.stream() and open()
-STREAM_TYPES = Union[TextIO, BufferedReader, BytesIO]
+STREAM_TYPES: TypeAlias = TextIO | BufferedReader | BytesIO
 
 
 class CplSuccessiveLinesLimits:
@@ -87,7 +87,7 @@ class CplSuccessiveLinesLimits:
     of common lines between both stripped lines collections extracted from both files.
     """
 
-    __slots__ = ("first_file", "second_file", "effective_cmn_lines_nb")
+    __slots__ = ("effective_cmn_lines_nb", "first_file", "second_file")
 
     def __init__(
         self,
@@ -110,7 +110,7 @@ class LinesChunk:
     lines of a lineset.
     """
 
-    __slots__ = ("_fileid", "_index", "_hash")
+    __slots__ = ("_fileid", "_hash", "_index")
 
     def __init__(self, fileid: str, num_line: int, *lines: Iterable[str]) -> None:
         self._fileid: str = fileid
@@ -150,7 +150,7 @@ class SuccessiveLinesLimits:
     :note: Only the end line number can be updated.
     """
 
-    __slots__ = ("_start", "_end")
+    __slots__ = ("_end", "_start")
 
     def __init__(self, start: LineNumber, end: LineNumber) -> None:
         self._start: LineNumber = start
@@ -430,9 +430,7 @@ class Symilar:
             cpls: set[LinesChunkLimits_T]
             for cpls in ensembles:
                 sims.append((num, cpls))
-        sims.sort()
-        sims.reverse()
-        return sims
+        return sorted(sims, reverse=True)
 
     def _display_sims(
         self, similarities: list[tuple[int, set[LinesChunkLimits_T]]]

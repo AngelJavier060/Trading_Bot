@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import astroid
 from astroid import nodes
@@ -23,9 +23,9 @@ if TYPE_CHECKING:
 
     _CallbackT = Callable[
         [nodes.NodeNG],
-        Union[tuple[ClassDiagram], tuple[PackageDiagram, ClassDiagram], None],
+        tuple[ClassDiagram] | tuple[PackageDiagram, ClassDiagram] | None,
     ]
-    _CallbackTupleT = tuple[Optional[_CallbackT], Optional[_CallbackT]]
+    _CallbackTupleT = tuple[_CallbackT | None, _CallbackT | None]
 
 
 RCFILE = ".pyreverserc"
@@ -47,9 +47,7 @@ def get_default_options() -> list[str]:
 
 def insert_default_options() -> None:
     """Insert default options to sys.argv."""
-    options = get_default_options()
-    options.reverse()
-    for arg in options:
+    for arg in reversed(get_default_options()):
         sys.argv.insert(1, arg)
 
 
@@ -200,9 +198,9 @@ def get_annotation(
         ann
         and getattr(default, "value", "value") is None
         and not label.startswith("Optional")
-        and (
-            not isinstance(ann, nodes.BinOp)
-            or not any(
+        and not (
+            isinstance(ann, nodes.BinOp)
+            and any(
                 isinstance(child, nodes.Const) and child.value is None
                 for child in ann.get_children()
             )

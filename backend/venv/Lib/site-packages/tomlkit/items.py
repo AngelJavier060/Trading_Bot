@@ -380,6 +380,9 @@ class SingleKey(Key):
         sep: str | None = None,
         original: str | None = None,
     ) -> None:
+        if not isinstance(k, str):
+            raise TypeError("Keys must be strings")
+
         if t is None:
             if not k or any(
                 c not in string.ascii_letters + string.digits + "-" + "_" for c in k
@@ -1083,7 +1086,7 @@ class Time(Item, time):
 
 
 class _ArrayItemGroup:
-    __slots__ = ("value", "indent", "comma", "comment")
+    __slots__ = ("comma", "comment", "indent", "value")
 
     def __init__(
         self,
@@ -1138,11 +1141,13 @@ class Array(Item, _CustomList):
         """Group the values into (indent, value, comma, comment) tuples"""
         groups = []
         this_group = _ArrayItemGroup()
+        start_new_group = False
         for item in value:
             if isinstance(item, Whitespace):
-                if "," not in item.s:
+                if "," not in item.s or start_new_group:
                     groups.append(this_group)
                     this_group = _ArrayItemGroup(indent=item)
+                    start_new_group = False
                 else:
                     if this_group.value is None:
                         # when comma is met and no value is provided, add a dummy Null
@@ -1152,6 +1157,8 @@ class Array(Item, _CustomList):
                 if this_group.value is None:
                     this_group.value = Null()
                 this_group.comment = item
+                # Comments are the last item in a group.
+                start_new_group = True
             elif this_group.value is None:
                 this_group.value = item
             else:
@@ -1202,7 +1209,7 @@ class Array(Item, _CustomList):
 
     def as_string(self) -> str:
         if not self._multiline or not self._value:
-            return f'[{"".join(v.as_string() for v in self._iter_items())}]'
+            return f"[{''.join(v.as_string() for v in self._iter_items())}]"
 
         s = "[\n"
         s += "".join(
@@ -1260,7 +1267,7 @@ class Array(Item, _CustomList):
         data_values = []
         for i, el in enumerate(items):
             it = item(el, _parent=self)
-            if isinstance(it, Comment) or add_comma and isinstance(el, Whitespace):
+            if isinstance(it, Comment) or (add_comma and isinstance(el, Whitespace)):
                 raise ValueError(f"item type {type(it)} is not allowed in add_line")
             if not isinstance(it, Whitespace):
                 if whitespace:
@@ -1313,10 +1320,14 @@ class Array(Item, _CustomList):
     def __len__(self) -> int:
         return list.__len__(self)
 
+    def item(self, index: int) -> Item:
+        rv = list.__getitem__(self, index)
+        return cast(Item, rv)
+
     def __getitem__(self, key: int | slice) -> Any:
-        rv = cast(Item, list.__getitem__(self, key))
-        if rv.is_boolean():
-            return bool(rv)
+        rv = list.__getitem__(self, key)
+        if isinstance(rv, Bool):
+            return rv.value
         return rv
 
     def __setitem__(self, key: int | slice, value: Any) -> Any:
@@ -1395,6 +1406,7 @@ class Array(Item, _CustomList):
                 if not isinstance(key, slice):
                     raise IndexError("list index out of range") from e
             else:
+                group_rm = self._value[idx]
                 del self._value[idx]
                 if (
                     idx == 0
@@ -1404,6 +1416,44 @@ class Array(Item, _CustomList):
                 ):
                     # Remove the indentation of the first item if not newline
                     self._value[idx].indent = None
+                comma_in_indent = (
+                    group_rm.indent is not None and "," in group_rm.indent.s
+                )
+                comma_in_comma = group_rm.comma is not None and "," in group_rm.comma.s
+                if comma_in_indent and comma_in_comma:
+                    # Removed group had both commas. Add one to the next group.
+                    group = self._value[idx] if len(self._value) > idx else None
+                    if group is not None:
+                        if group.indent is None:
+                            group.indent = Whitespace(",")
+                        elif "," not in group.indent.s:
+                            # Insert the comma after the newline
+                            try:
+                                newline_index = group.indent.s.index("\n")
+                                group.indent._s = (
+                                    group.indent.s[: newline_index + 1]
+                                    + ","
+                                    + group.indent.s[newline_index + 1 :]
+                                )
+                            except ValueError:
+                                group.indent._s = "," + group.indent.s
+                elif not comma_in_indent and not comma_in_comma:
+                    # Removed group had no commas. Remove the next comma found.
+                    for j in range(idx, len(self._value)):
+                        group = self._value[j]
+                        if group.indent is not None and "," in group.indent.s:
+                            group.indent._s = group.indent.s.replace(",", "", 1)
+                            break
+                if group_rm.indent is not None and "\n" in group_rm.indent.s:
+                    # Restore the removed group's newline onto the next group
+                    # if the next group does not have a newline.
+                    # i.e. the two were on the same line
+                    group = self._value[idx] if len(self._value) > idx else None
+                    if group is not None and (
+                        group.indent is None or "\n" not in group.indent.s
+                    ):
+                        group.indent = group_rm.indent
+
         if len(self._value) > 0:
             v = self._value[-1]
             if not v.is_whitespace():
@@ -1478,6 +1528,9 @@ class AbstractTable(Item, _CustomDict):
             dict.__delitem__(self, key)
 
         return self
+
+    def item(self, key: Key | str) -> Item:
+        return self._value.item(key)
 
     def setdefault(self, key: Key | str, default: Any) -> Any:
         super().setdefault(key, default)
@@ -1743,7 +1796,7 @@ class InlineTable(AbstractTable):
             v_trivia_trail = v.trivia.trail.replace("\n", "")
             buf += (
                 f"{v.trivia.indent}"
-                f'{k.as_string() + ("." if k.is_dotted() else "")}'
+                f"{k.as_string() + ('.' if k.is_dotted() else '')}"
                 f"{k.sep}"
                 f"{v.as_string()}"
                 f"{v.trivia.comment}"
@@ -1878,7 +1931,7 @@ class AoT(Item, _CustomList):
         return self._body[key]
 
     def __setitem__(self, key: slice | int, value: Any) -> None:
-        raise NotImplementedError
+        self._body[key] = item(value, _parent=self)
 
     def __delitem__(self, key: slice | int) -> None:
         del self._body[key]

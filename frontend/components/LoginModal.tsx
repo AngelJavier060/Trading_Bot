@@ -17,7 +17,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess, onLoginError })
     }
 
     try {
-      const response = await api.login({ username, password });
+      const response = await api.login({ username, password, accountType: 'PRACTICE' });
       console.log("Inicio de sesión exitoso:", response);
       onLoginSuccess(response);
     } catch (error: any) {

@@ -1,1 +1,3 @@
-SECRET_KEY = "clave_secreta_super_segura"
+import os
+
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")

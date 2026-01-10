@@ -1,4 +1,4 @@
-#!F:\PROGRAMAS CREADOS 2024\IPOPTION\IQ_OPTION_BOT\backend\venv\Scripts\python.exe
+#!C:\Users\ANGEL\Documents\Trading_Bot\backend\venv\Scripts\python.exe
 
 import argparse
 import code

@@ -1,0 +1,11 @@
+deactivate
+Remove-Item -Recurse -Force venv
+Crear un entorno nuevo
+python -m venv venv
+Activar el entorno virtual 
+.\venv\Scripts\activate
+Intalar todas las deendencias de pyton
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python run.py
+python.exe run.py

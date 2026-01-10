@@ -16,12 +16,63 @@ const api = {
     return await response.json();
   },
 
-  getAccountInfo: async () => {
-    const response = await fetch(`${BASE_URL}/account-info`);
-    if (!response.ok) {
-      throw new Error("Error al obtener la información de la cuenta");
+  // Alias usado por la pantalla de configuración (TradingConfig)
+  saveConfig: async (config: any) => {
+    const response = await fetch(`${BASE_URL}/api/trading/save-config`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(config),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al guardar la configuración');
     }
-    return await response.json();
+
+    return data;
+  },
+
+  buy: async (order: { [key: string]: any }) => {
+    const asset = order.asset || order.activo;
+    const amount = order.amount ?? order.cantidad;
+    const direction = order.direction || order.direccion;
+    const expiration = order.expiration ?? order.expiracion;
+
+    const response = await fetch(`${BASE_URL}/api/trading/order`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        asset,
+        amount,
+        direction,
+        expiration,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.status !== "success") {
+      throw new Error(data.message || "Error al ejecutar la orden");
+    }
+
+    return {
+      ...data,
+      resultado: data.message || data.status,
+    };
+  },
+
+  getAccountInfo: async () => {
+    const response = await fetch(`${BASE_URL}/api/trading/account-info`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || "Error al obtener la información de la cuenta");
+    }
+    return data.accountInfo || data;
   },
 
   getConfig: async () => {
@@ -127,6 +178,40 @@ const api = {
     }
   },
 
+  getAssets: async () => {
+    const response = await fetch(`${BASE_URL}/api/trading/assets`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener los activos');
+    }
+    return data;
+  },
+
+  getTrades: async (limit: number = 100) => {
+    const response = await fetch(`${BASE_URL}/api/trading/trades?limit=${limit}`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener el historial de operaciones');
+    }
+    return data;
+  },
+
+  scanAssets: async (assets?: string, interval?: number) => {
+    let url = `${BASE_URL}/api/trading/scan`;
+    const params = new URLSearchParams();
+    if (assets) params.append('assets', assets);
+    if (interval) params.append('interval', interval.toString());
+    
+    if (params.toString()) url += `?${params.toString()}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al escanear activos');
+    }
+    return data;
+  },
+
   connectQuotex: async (credentials: Record<string, string>, accountType: string) => {
     try {
       const response = await fetch(`${BASE_URL}/api/quotex/connect`, {
@@ -204,6 +289,202 @@ const api = {
     } catch (error: any) {
       throw new Error(error.message || 'Error al obtener datos históricos');
     }
+  },
+
+  // ==================== BACKTESTING API ====================
+
+  getStrategies: async () => {
+    const response = await fetch(`${BASE_URL}/api/backtesting/strategies`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener estrategias');
+    }
+    return data;
+  },
+
+  getStrategyDetails: async (name: string) => {
+    const response = await fetch(`${BASE_URL}/api/backtesting/strategy?name=${name}`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener detalles de estrategia');
+    }
+    return data;
+  },
+
+  runBacktest: async (config: any, candles: any) => {
+    const response = await fetch(`${BASE_URL}/api/backtesting/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config, candles }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al ejecutar backtesting');
+    }
+    return data;
+  },
+
+  runQuickBacktest: async (params: {
+    strategy_name: string;
+    num_candles?: number;
+    initial_capital?: number;
+    trade_amount?: number;
+    payout_rate?: number;
+    min_confidence?: number;
+  }) => {
+    const response = await fetch(`${BASE_URL}/api/backtesting/quick`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al ejecutar backtesting rápido');
+    }
+    return data;
+  },
+
+  getBacktestResult: async (id: string) => {
+    const response = await fetch(`${BASE_URL}/api/backtesting/result?id=${id}`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener resultado');
+    }
+    return data;
+  },
+
+  listBacktestResults: async () => {
+    const response = await fetch(`${BASE_URL}/api/backtesting/results`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al listar resultados');
+    }
+    return data;
+  },
+
+  compareStrategies: async (strategies: string[], config?: any, candles?: any) => {
+    const response = await fetch(`${BASE_URL}/api/backtesting/compare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strategies, config, candles }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al comparar estrategias');
+    }
+    return data;
+  },
+
+  analyzeSignal: async (strategy_name: string, candles: any[]) => {
+    const response = await fetch(`${BASE_URL}/api/backtesting/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strategy_name, candles }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al analizar señal');
+    }
+    return data;
+  },
+
+  // ==================== MACHINE LEARNING API ====================
+
+  getMLStatus: async () => {
+    const response = await fetch(`${BASE_URL}/api/ml/status`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener estado ML');
+    }
+    return data;
+  },
+
+  trainML: async (params: {
+    platform?: string;
+    symbol?: string;
+    timeframe?: string;
+    candles?: number;
+    train_xgboost?: boolean;
+    train_lstm?: boolean;
+  }) => {
+    const response = await fetch(`${BASE_URL}/api/ml/train`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al entrenar modelos');
+    }
+    return data;
+  },
+
+  quickTrainML: async () => {
+    const response = await fetch(`${BASE_URL}/api/ml/quick-train`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error en entrenamiento rápido');
+    }
+    return data;
+  },
+
+  predictML: async (params: {
+    platform?: string;
+    symbol?: string;
+    timeframe?: string;
+    candles?: number;
+    model?: 'xgboost' | 'lstm' | 'ensemble';
+  }) => {
+    const response = await fetch(`${BASE_URL}/api/ml/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error en predicción ML');
+    }
+    return data;
+  },
+
+  analyzeML: async (params: {
+    symbol?: string;
+    timeframe?: string;
+    strategy?: string;
+  }) => {
+    const response = await fetch(`${BASE_URL}/api/ml/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error en análisis ML');
+    }
+    return data;
+  },
+
+  getFeatureImportance: async () => {
+    const response = await fetch(`${BASE_URL}/api/ml/feature-importance`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener importancia de features');
+    }
+    return data;
+  },
+
+  loadMLModels: async () => {
+    const response = await fetch(`${BASE_URL}/api/ml/load`, {
+      method: 'POST',
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al cargar modelos');
+    }
+    return data;
   }
 };
 

@@ -4,10 +4,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, TypeGuard
 
-import astroid.bases
-from astroid import nodes
+from astroid import bases, nodes
 
 from pylint.checkers import BaseChecker
 from pylint.checkers.utils import (
@@ -104,10 +103,14 @@ class TypingChecker(BaseChecker):
             "Python 3.7 or 3.8.",
         ),
         "R6003": (
-            "Consider using alternative Union syntax instead of '%s'%s",
+            "Consider using alternative union syntax instead of '%s'%s",
             "consider-alternative-union-syntax",
-            "Emitted when 'typing.Union' or 'typing.Optional' is used "
-            "instead of the alternative Union syntax 'int | None'.",
+            "Emitted when ``typing.Union`` or ``typing.Optional`` is used "
+            "instead of the shorthand union syntax. For example, "
+            "``Union[int, float]`` instead of ``int | float``. Using "
+            "the shorthand for unions aligns with Python typing "
+            "recommendations, removes the need for imports, and avoids "
+            "confusion in function signatures.",
         ),
         "E6004": (
             "'NoReturn' inside compound types is broken in 3.7.0 / 3.7.1",
@@ -182,6 +185,8 @@ class TypingChecker(BaseChecker):
         self._py39_plus = py_version >= (3, 9)
         self._py310_plus = py_version >= (3, 10)
         self._py313_plus = py_version >= (3, 13)
+        self._py314_plus = py_version >= (3, 14)
+        self._postponed_evaluation_enabled = False
 
         self._should_check_typing_alias = self._py39_plus or (
             self._py37_plus and self.linter.config.runtime_typing is False
@@ -192,6 +197,11 @@ class TypingChecker(BaseChecker):
 
         self._should_check_noreturn = py_version < (3, 7, 2)
         self._should_check_callable = py_version < (3, 9, 2)
+
+    def visit_module(self, node: nodes.Module) -> None:
+        self._postponed_evaluation_enabled = (
+            self._py314_plus or is_postponed_evaluation_enabled(node)
+        )
 
     def _msg_postponed_eval_hint(self, node: nodes.NodeNG) -> str:
         """Message hint if postponed evaluation isn't enabled."""
@@ -262,8 +272,10 @@ class TypingChecker(BaseChecker):
         if (  # pylint: disable=too-many-boolean-expressions
             isinstance(inferred, nodes.ClassDef)
             and (
-                inferred.qname() in {"typing.Generator", "typing.AsyncGenerator"}
-                and self._py313_plus
+                (
+                    inferred.qname() in {"typing.Generator", "typing.AsyncGenerator"}
+                    and self._py313_plus
+                )
                 or inferred.qname()
                 in {"_collections_abc.Generator", "_collections_abc.AsyncGenerator"}
             )
@@ -286,12 +298,11 @@ class TypingChecker(BaseChecker):
     @staticmethod
     def _is_deprecated_union_annotation(
         annotation: nodes.NodeNG, union_name: str
-    ) -> bool:
-        return (
-            isinstance(annotation, nodes.Subscript)
-            and isinstance(annotation.value, nodes.Name)
-            and annotation.value.name == union_name
-        )
+    ) -> TypeGuard[nodes.Subscript]:
+        match annotation:
+            case nodes.Subscript(value=nodes.Name(name=name)):
+                return name == union_name  # type: ignore[no-any-return]
+        return False
 
     def _is_binop_union_annotation(self, annotation: nodes.NodeNG) -> bool:
         return self._should_check_alternative_union_syntax and isinstance(
@@ -347,10 +358,14 @@ class TypingChecker(BaseChecker):
         """
         inferred = safe_infer(node)
         if not (
-            isinstance(inferred, nodes.FunctionDef)
-            and inferred.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred, astroid.bases.Instance)
-            and inferred.qname() == "typing._SpecialForm"
+            (
+                isinstance(inferred, (nodes.FunctionDef, nodes.ClassDef))
+                and inferred.qname() in {"typing.Optional", "typing.Union"}
+            )
+            or (
+                isinstance(inferred, bases.Instance)
+                and inferred.qname() == "typing._SpecialForm"
+            )
         ):
             return
         if not (self._py310_plus or is_node_in_type_annotation_context(node)):
@@ -463,9 +478,8 @@ class TypingChecker(BaseChecker):
             # NoReturn not part of a Union or Callable type
             return
 
-        if (
-            in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
+        if in_type_checking_block(node) or (
+            self._postponed_evaluation_enabled
             and is_node_in_type_annotation_context(node)
         ):
             return
@@ -473,12 +487,16 @@ class TypingChecker(BaseChecker):
         for inferred in node.infer():
             # To deal with typing_extensions, don't use safe_infer
             if (
-                isinstance(inferred, (nodes.FunctionDef, nodes.ClassDef))
-                and inferred.qname() in TYPING_NORETURN
+                (
+                    isinstance(inferred, (nodes.FunctionDef, nodes.ClassDef))
+                    and inferred.qname() in TYPING_NORETURN
+                )
                 # In Python 3.7 - 3.8, NoReturn is alias of '_SpecialForm'
-                or isinstance(inferred, astroid.bases.BaseInstance)
-                and isinstance(inferred._proxied, nodes.ClassDef)
-                and inferred._proxied.qname() == "typing._SpecialForm"
+                or (
+                    isinstance(inferred, bases.BaseInstance)
+                    and isinstance(inferred._proxied, nodes.ClassDef)
+                    and inferred._proxied.qname() == "typing._SpecialForm"
+                )
             ):
                 self.add_message("broken-noreturn", node=node, confidence=INFERENCE)
                 break
@@ -497,21 +515,18 @@ class TypingChecker(BaseChecker):
 
     def _broken_callable_location(self, node: nodes.Name | nodes.Attribute) -> bool:
         """Check if node would be a broken location for collections.abc.Callable."""
-        if (
-            in_type_checking_block(node)
-            or is_postponed_evaluation_enabled(node)
+        if in_type_checking_block(node) or (
+            self._postponed_evaluation_enabled
             and is_node_in_type_annotation_context(node)
         ):
             return False
 
         # Check first Callable arg is a list of arguments -> Callable[[int], None]
-        if not (
-            isinstance(node.parent, nodes.Subscript)
-            and isinstance(node.parent.slice, nodes.Tuple)
-            and len(node.parent.slice.elts) == 2
-            and isinstance(node.parent.slice.elts[0], nodes.List)
-        ):
-            return False
+        match node.parent:
+            case nodes.Subscript(slice=nodes.Tuple(elts=[nodes.List(), _])):
+                pass
+            case _:
+                return False
 
         # Check nested inside Optional or Union
         parent_subscript = node.parent.parent
@@ -525,10 +540,14 @@ class TypingChecker(BaseChecker):
 
         inferred_parent = safe_infer(parent_subscript.value)
         if not (
-            isinstance(inferred_parent, nodes.FunctionDef)
-            and inferred_parent.qname() in {"typing.Optional", "typing.Union"}
-            or isinstance(inferred_parent, astroid.bases.Instance)
-            and inferred_parent.qname() == "typing._SpecialForm"
+            (
+                isinstance(inferred_parent, (nodes.FunctionDef, nodes.ClassDef))
+                and inferred_parent.qname() in {"typing.Optional", "typing.Union"}
+            )
+            or (
+                isinstance(inferred_parent, bases.Instance)
+                and inferred_parent.qname() == "typing._SpecialForm"
+            )
         ):
             return False
 

@@ -4,17 +4,6 @@
 
 from __future__ import annotations
 
-try:
-    import isort.api
-    import isort.settings
-
-    HAS_ISORT_5 = True
-except ImportError:  # isort < 5
-    import isort
-
-    HAS_ISORT_5 = False
-
-import argparse
 import codecs
 import os
 import re
@@ -26,9 +15,9 @@ from collections import deque
 from collections.abc import Iterable, Sequence
 from io import BufferedReader, BytesIO
 from re import Pattern
-from typing import TYPE_CHECKING, Any, Literal, TextIO, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Literal, TextIO, TypeVar
 
-from astroid import Module, modutils, nodes
+from astroid import modutils, nodes
 
 from pylint.constants import PY_EXTS
 from pylint.typing import OptionDict
@@ -40,7 +29,6 @@ DEFAULT_LINE_LENGTH = 79
 
 # These are types used to overload get_global_option() and refer to the options type
 GLOBAL_OPTION_BOOL = Literal[
-    "suggestion-mode",
     "analyse-fallback-blocks",
     "allow-global-unused-variables",
     "prefer-stubs",
@@ -55,14 +43,14 @@ GLOBAL_OPTION_PATTERN = Literal[
 ]
 GLOBAL_OPTION_PATTERN_LIST = Literal["exclude-too-few-public-methods", "ignore-paths"]
 GLOBAL_OPTION_TUPLE_INT = Literal["py-version"]
-GLOBAL_OPTION_NAMES = Union[
-    GLOBAL_OPTION_BOOL,
-    GLOBAL_OPTION_INT,
-    GLOBAL_OPTION_LIST,
-    GLOBAL_OPTION_PATTERN,
-    GLOBAL_OPTION_PATTERN_LIST,
-    GLOBAL_OPTION_TUPLE_INT,
-]
+GLOBAL_OPTION_NAMES = (
+    GLOBAL_OPTION_BOOL
+    | GLOBAL_OPTION_INT
+    | GLOBAL_OPTION_LIST
+    | GLOBAL_OPTION_PATTERN
+    | GLOBAL_OPTION_PATTERN_LIST
+    | GLOBAL_OPTION_TUPLE_INT
+)
 T_GlobalOptionReturnTypes = TypeVar(
     "T_GlobalOptionReturnTypes",
     bool,
@@ -96,7 +84,7 @@ def cmp(a: float, b: float) -> int:
 def diff_string(old: float, new: float) -> str:
     """Given an old and new value, return a string representing the difference."""
     diff = abs(old - new)
-    diff_str = f"{CMPS[cmp(old, new)]}{diff and f'{diff:.2f}' or ''}"
+    diff_str = f"{CMPS[cmp(old, new)]}{(diff and f'{diff:.2f}') or ''}"
     return diff_str
 
 
@@ -105,7 +93,7 @@ def get_module_and_frameid(node: nodes.NodeNG) -> tuple[str, str]:
     frame = node.frame()
     module, obj = "", []
     while frame:
-        if isinstance(frame, Module):
+        if isinstance(frame, nodes.Module):
             module = frame.name
         else:
             obj.append(getattr(frame, "name", "<lambda>"))
@@ -113,8 +101,7 @@ def get_module_and_frameid(node: nodes.NodeNG) -> tuple[str, str]:
             frame = frame.parent.frame()
         except AttributeError:
             break
-    obj.reverse()
-    return module, ".".join(obj)
+    return module, ".".join(reversed(obj))
 
 
 def get_rst_title(title: str, character: str) -> str:
@@ -176,14 +163,10 @@ def register_plugins(linter: PyLinter, directory: str) -> None:
         base, extension = os.path.splitext(filename)
         if base in imported or base == "__pycache__":
             continue
-        if (
-            extension in PY_EXTS
-            and base != "__init__"
-            or (
-                not extension
-                and os.path.isdir(os.path.join(directory, base))
-                and not filename.startswith(".")
-            )
+        if (extension in PY_EXTS and base != "__init__") or (
+            not extension
+            and os.path.isdir(os.path.join(directory, base))
+            and not filename.startswith(".")
         ):
             try:
                 module = modutils.load_module_from_file(
@@ -350,30 +333,3 @@ def _ini_format(stream: TextIO, options: list[tuple[str, OptionDict, Any]]) -> N
                 # remove trailing ',' from last element of the list
                 value = value[:-1]
             print(f"{optname}={value}", file=stream)
-
-
-class IsortDriver:
-    """A wrapper around isort API that changed between versions 4 and 5."""
-
-    def __init__(self, config: argparse.Namespace) -> None:
-        if HAS_ISORT_5:
-            self.isort5_config = isort.settings.Config(
-                # There is no typo here. EXTRA_standard_library is
-                # what most users want. The option has been named
-                # KNOWN_standard_library for ages in pylint, and we
-                # don't want to break compatibility.
-                extra_standard_library=config.known_standard_library,
-                known_third_party=config.known_third_party,
-            )
-        else:
-            # pylint: disable-next=no-member
-            self.isort4_obj = isort.SortImports(  # type: ignore[attr-defined]
-                file_contents="",
-                known_standard_library=config.known_standard_library,
-                known_third_party=config.known_third_party,
-            )
-
-    def place_module(self, package: str) -> str:
-        if HAS_ISORT_5:
-            return isort.api.place_module(package, self.isort5_config)
-        return self.isort4_obj.place_module(package)  # type: ignore[no-any-return]

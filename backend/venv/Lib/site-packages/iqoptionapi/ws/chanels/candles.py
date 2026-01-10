@@ -22,7 +22,6 @@ class GetCandles(Base):
                 "version":"2.0",
                 "body":{
                         "active_id":int(active_id),
-                        "split_normalization": True,
                         "size":interval,#time size sample:if interval set 1 mean get time 0~1 candle 
                         "to":int(endtime),   #int(self.api.timesync.server_timestamp),
                         "count":count,#get how many candle

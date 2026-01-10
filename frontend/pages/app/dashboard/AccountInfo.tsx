@@ -1,38 +1,44 @@
-import React, { useEffect, useState } from "react";
-import api from "../../../../services/api";
-import AccountInfo from './trading/AccountInfo';
+import React from "react";
 
-const AccountPage: React.FC = () => {
-  const [accountInfo, setAccountInfo] = useState<{
-    account_type: string;
-    balance: number;
-  } | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string>("");
+interface AccountInfoProps {
+  tipoCuenta?: string;
+  balance?: number;
+  currency?: string;
+}
 
-  useEffect(() => {
-    const fetchAccountInfo = async () => {
-      try {
-        const info = await api.getAccountInfo();
-        setAccountInfo(info);
-      } catch (err: any) {
-        setError(err.message || "Error al obtener la información de la cuenta.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAccountInfo();
-  }, []);
-
+const AccountInfo: React.FC<AccountInfoProps> = ({
+  tipoCuenta = 'N/A',
+  balance = 0,
+  currency = 'USD',
+}) => {
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6">Página de Información de la Cuenta</h1>
-      {loading && <p className="text-blue-500">Cargando información...</p>}
-      {error && <p className="text-red-500">{error}</p>}
-      {accountInfo && <AccountInfo accountInfo={accountInfo} />}
+    <div className="bg-white rounded-xl shadow-md p-6 w-full max-w-md">
+      <h2 className="text-xl font-bold text-gray-800 mb-4">Información de Cuenta</h2>
+      
+      <div className="space-y-3">
+        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+          <span className="text-gray-500 text-sm">Tipo de Cuenta</span>
+          <span className={`font-bold ${
+            tipoCuenta === 'REAL' ? 'text-green-600' : 'text-blue-600'
+          }`}>
+            {tipoCuenta}
+          </span>
+        </div>
+        
+        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+          <span className="text-gray-500 text-sm">Balance</span>
+          <span className="font-bold text-gray-800">
+            ${typeof balance === 'number' ? balance.toFixed(2) : '0.00'}
+          </span>
+        </div>
+        
+        <div className="flex justify-between items-center py-2">
+          <span className="text-gray-500 text-sm">Moneda</span>
+          <span className="font-bold text-gray-800">{currency}</span>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default AccountPage;
+export default AccountInfo;

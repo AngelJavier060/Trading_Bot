@@ -36,5 +36,18 @@ services:
     volumes:
       - ./backend:/app
 
+  trading-frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: trading_frontend
+    restart: unless-stopped
+    depends_on:
+      - trading-backend
+    environment:
+      NEXT_PUBLIC_API_URL: "https://api-trading.improvement-solution.com"
+    ports:
+      - "3001:3000"
+
 volumes:
   db_data:

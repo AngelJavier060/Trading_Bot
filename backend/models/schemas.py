@@ -5,6 +5,8 @@ class CredentialsSchema(BaseModel):
     email: Optional[str] = None
     password: str
     login: Optional[int] = None # Para MT5
+    server: Optional[str] = None # Para MT5 - servidor personalizado
+    terminal_path: Optional[str] = None # Ruta del terminal MT5 opcional
 
 class ConnectSchema(BaseModel):
     platform: Optional[str] = "iqoption"

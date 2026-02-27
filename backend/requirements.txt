@@ -10,6 +10,9 @@ webdriver-manager
 selenium
 MetaTrader5
 pydantic
+email-validator
+scikit-learn
+xgboost
 SQLAlchemy>=2.0.0
-pymysql
+pg8000
 cryptography

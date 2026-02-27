@@ -1,11 +1,20 @@
 from flask import jsonify, request
 import logging
 from datetime import datetime
-import MetaTrader5 as mt5
 import pandas as pd
+import os
 from services.trading_service import trading_service
 from api.utils.validators import validate_schema
 from models.schemas import ConnectSchema
+
+# Try to import MetaTrader5, handle if not installed
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
+    logging.warning("MetaTrader5 module not installed - MT5 features will be disabled")
 
 # Ejemplo de configuración para Admiral Markets
 ADMIRAL_SERVERS = {
@@ -24,6 +33,13 @@ class MT5Controller:
     @validate_schema(ConnectSchema)
     def connect(self, validated_data: ConnectSchema):
         try:
+            # Check if MT5 is available
+            if not MT5_AVAILABLE or mt5 is None:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'MetaTrader5 no está instalado. Instala con: pip install MetaTrader5'
+                }), 500
+            
             credentials = validated_data.credentials
             
             login = credentials.login
@@ -33,13 +49,55 @@ class MT5Controller:
             if login is None or not password:
                 return jsonify({'error': 'Credenciales incompletas (login y password requeridos)'}), 400
 
-            server = ADMIRAL_SERVERS['demo'] if is_demo else ADMIRAL_SERVERS['real']
+            # Use custom server from request, or fallback to default Admiral servers
+            if credentials.server:
+                server = credentials.server
+            else:
+                server = ADMIRAL_SERVERS['demo'] if is_demo else ADMIRAL_SERVERS['real']
             
-            # Inicializar MT5
-            if not mt5.initialize():
+            logging.info(f"MT5 connecting to server: {server} with login: {login}")
+            
+            # Inicializar MT5 (con fallback a rutas comunes de terminal)
+            initialized = mt5.initialize()
+            attempted_paths = []
+            
+            # Try custom terminal path if provided
+            if not initialized and credentials.terminal_path and os.path.exists(credentials.terminal_path):
+                attempted_paths.append(credentials.terminal_path)
+                try:
+                    if mt5.initialize(path=credentials.terminal_path):
+                        initialized = True
+                        logging.info(f"MT5 initialized using custom terminal at: {credentials.terminal_path}")
+                except Exception:
+                    pass
+            
+            # Try common paths if still not initialized
+            if not initialized:
+                common_paths = [
+                    r"C:\\Program Files\\MetaTrader 5\\terminal64.exe",
+                    r"C:\\Program Files (x86)\\MetaTrader 5\\terminal64.exe",
+                    r"C:\\Program Files\\Admiral Markets MetaTrader 5\\terminal64.exe",
+                    r"C:\\Program Files\\Admirals MetaTrader 5\\terminal64.exe",
+                    r"C:\\Program Files\\Admiral Markets MT5\\terminal64.exe",
+                ]
+                for path in common_paths:
+                    if os.path.exists(path):
+                        attempted_paths.append(path)
+                        try:
+                            if mt5.initialize(path=path):
+                                initialized = True
+                                logging.info(f"MT5 initialized using terminal at: {path}")
+                                break
+                        except Exception:
+                            pass
+            
+            if not initialized:
+                last_err = mt5.last_error() if hasattr(mt5, 'last_error') else ('unknown', 'unknown')
                 return jsonify({
                     'status': 'error',
-                    'message': 'Error al inicializar MT5. Asegúrate de que esté instalado correctamente.'
+                    'message': 'No se pudo inicializar MetaTrader 5. Verifica que el terminal esté instalado y abierto.',
+                    'last_error': str(last_err),
+                    'attempted_paths': attempted_paths
                 }), 500
 
             # Intentar login con Admiral Markets
@@ -53,7 +111,7 @@ class MT5Controller:
                 mt5.shutdown()
                 return jsonify({
                     'status': 'error',
-                    'message': f'Error de autorización: {mt5.last_error()}. Verifica tus credenciales y el servidor.'
+                    'message': f'Error de autorización: {mt5.last_error()}. Verifica tus credenciales y el servidor ({server}).'
                 }), 401
 
             # Obtener información de la cuenta

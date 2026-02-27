@@ -12,7 +12,7 @@ import logging
 from .connection import get_db_session, session_scope
 from .models import (
     Trade, Signal, Strategy, StrategyVersion,
-    IndicatorConfig, MarketCondition, RobotConfig, PerformanceMetrics
+    IndicatorConfig, MarketCondition, RobotConfig, PerformanceMetrics, MLAnalysis
 )
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,23 @@ class TradeRepository:
                 trade.profit_loss = profit_loss
                 trade.exit_price = exit_price
                 trade.closed_at = datetime.utcnow()
+                # Si ya existe un order_id_platform, consideramos que está sincronizado
+                if getattr(trade, 'order_id_platform', None):
+                    trade.is_synced = True
+                    trade.sync_timestamp = datetime.utcnow()
+                session.flush()
+                return trade.to_dict()
+        return None
+
+    @staticmethod
+    def set_order_id_platform(trade_id: str, order_id_platform: str) -> Optional[Dict]:
+        """Persistir el ID de orden de la plataforma y marcar la operación como sincronizada."""
+        with session_scope() as session:
+            trade = session.query(Trade).filter(Trade.trade_id == trade_id).first()
+            if trade:
+                trade.order_id_platform = str(order_id_platform)
+                trade.is_synced = True
+                trade.sync_timestamp = datetime.utcnow()
                 session.flush()
                 return trade.to_dict()
         return None
@@ -523,3 +540,153 @@ class PerformanceRepository:
             PerformanceMetrics.period_type == period_type
         ).order_by(desc(PerformanceMetrics.period_start)).limit(limit).all()
         return [m.to_dict() for m in metrics]
+
+
+class MLAnalysisRepository:
+    """Repositorio para análisis de ML y feedback del asistente."""
+    
+    @staticmethod
+    def create(data: Dict[str, Any]) -> Optional[Dict]:
+        """Crear un nuevo registro de análisis ML."""
+        try:
+            with session_scope() as session:
+                analysis = MLAnalysis(
+                    analysis_type=data.get('analysis_type', 'trade_feedback'),
+                    trade_id=data.get('trade_id'),
+                    symbol=data.get('symbol'),
+                    strategy_name=data.get('strategy_name'),
+                    direction=data.get('direction'),
+                    trade_result=data.get('trade_result'),
+                    trade_pnl=data.get('trade_pnl'),
+                    confidence_at_entry=data.get('confidence_at_entry'),
+                    analysis_title=data.get('analysis_title'),
+                    analysis_content=data.get('analysis_content'),
+                    feedback_type=data.get('feedback_type'),
+                    priority=data.get('priority', 'medium'),
+                    win_reasons=data.get('win_reasons'),
+                    loss_reasons=data.get('loss_reasons'),
+                    improvement_suggestions=data.get('improvement_suggestions'),
+                    lessons_learned=data.get('lessons_learned'),
+                    indicators_snapshot=data.get('indicators_snapshot'),
+                    market_conditions=data.get('market_conditions'),
+                    strategy_win_rate=data.get('strategy_win_rate'),
+                    strategy_total_trades=data.get('strategy_total_trades'),
+                    strategy_pnl=data.get('strategy_pnl'),
+                    ml_prediction_correct=data.get('ml_prediction_correct'),
+                    ml_confidence=data.get('ml_confidence'),
+                    pattern_detected=data.get('pattern_detected'),
+                )
+                session.add(analysis)
+                session.flush()
+                return analysis.to_dict()
+        except Exception as e:
+            logger.error(f"Error creating ML analysis: {e}")
+            return None
+    
+    @staticmethod
+    def get_by_trade_id(trade_id: str) -> Optional[Dict]:
+        """Obtener análisis por trade ID."""
+        session = get_db_session()
+        try:
+            analysis = session.query(MLAnalysis).filter(
+                MLAnalysis.trade_id == trade_id
+            ).first()
+            return analysis.to_dict() if analysis else None
+        except Exception as e:
+            logger.error(f"Error getting analysis by trade_id: {e}")
+            return None
+    
+    @staticmethod
+    def get_recent(limit: int = 50, analysis_type: Optional[str] = None) -> List[Dict]:
+        """Obtener análisis recientes."""
+        session = get_db_session()
+        try:
+            query = session.query(MLAnalysis)
+            if analysis_type:
+                query = query.filter(MLAnalysis.analysis_type == analysis_type)
+            analyses = query.order_by(desc(MLAnalysis.created_at)).limit(limit).all()
+            return [a.to_dict() for a in analyses]
+        except Exception as e:
+            logger.error(f"Error getting recent analyses: {e}")
+            return []
+    
+    @staticmethod
+    def get_strategy_stats(strategy_name: str, days: int = 30) -> Dict:
+        """Obtener estadísticas de una estrategia."""
+        session = get_db_session()
+        try:
+            since = datetime.utcnow() - timedelta(days=days)
+            analyses = session.query(MLAnalysis).filter(
+                and_(
+                    MLAnalysis.strategy_name == strategy_name,
+                    MLAnalysis.created_at >= since,
+                    MLAnalysis.analysis_type == 'trade_feedback'
+                )
+            ).all()
+            
+            if not analyses:
+                return {'strategy': strategy_name, 'trades': 0}
+            
+            wins = sum(1 for a in analyses if a.trade_result == 'win')
+            losses = sum(1 for a in analyses if a.trade_result == 'loss')
+            total_pnl = sum(a.trade_pnl or 0 for a in analyses)
+            
+            return {
+                'strategy': strategy_name,
+                'trades': len(analyses),
+                'wins': wins,
+                'losses': losses,
+                'win_rate': (wins / len(analyses) * 100) if analyses else 0,
+                'total_pnl': total_pnl,
+            }
+        except Exception as e:
+            logger.error(f"Error getting strategy stats: {e}")
+            return {'strategy': strategy_name, 'trades': 0}
+    
+    @staticmethod
+    def get_learning_insights(days: int = 7) -> Dict:
+        """Obtener insights de aprendizaje de análisis recientes."""
+        session = get_db_session()
+        try:
+            since = datetime.utcnow() - timedelta(days=days)
+            analyses = session.query(MLAnalysis).filter(
+                and_(
+                    MLAnalysis.created_at >= since,
+                    MLAnalysis.analysis_type == 'trade_feedback'
+                )
+            ).all()
+            
+            if not analyses:
+                return {'message': 'No hay suficientes datos'}
+            
+            symbol_perf = {}
+            strategy_perf = {}
+            
+            for a in analyses:
+                if a.symbol:
+                    if a.symbol not in symbol_perf:
+                        symbol_perf[a.symbol] = {'wins': 0, 'losses': 0, 'pnl': 0}
+                    if a.trade_result == 'win':
+                        symbol_perf[a.symbol]['wins'] += 1
+                    elif a.trade_result == 'loss':
+                        symbol_perf[a.symbol]['losses'] += 1
+                    symbol_perf[a.symbol]['pnl'] += a.trade_pnl or 0
+                
+                if a.strategy_name:
+                    if a.strategy_name not in strategy_perf:
+                        strategy_perf[a.strategy_name] = {'wins': 0, 'losses': 0, 'pnl': 0}
+                    if a.trade_result == 'win':
+                        strategy_perf[a.strategy_name]['wins'] += 1
+                    elif a.trade_result == 'loss':
+                        strategy_perf[a.strategy_name]['losses'] += 1
+                    strategy_perf[a.strategy_name]['pnl'] += a.trade_pnl or 0
+            
+            return {
+                'period_days': days,
+                'total_analyses': len(analyses),
+                'symbol_performance': symbol_perf,
+                'strategy_performance': strategy_perf,
+            }
+        except Exception as e:
+            logger.error(f"Error getting learning insights: {e}")
+            return {'error': str(e)}

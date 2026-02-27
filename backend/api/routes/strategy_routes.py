@@ -51,15 +51,15 @@ def update_indicator(config_id):
 
 # ===== CONFIG ROUTES =====
 
-@config_bp.route('/robot', methods=['GET'])
+@config_bp.route('/config', methods=['GET', 'OPTIONS'])
 def get_robot_config():
     return config_controller.get_robot_config()
 
-@config_bp.route('/robot', methods=['POST'])
+@config_bp.route('/config', methods=['POST', 'OPTIONS'])
 def save_robot_config():
     return config_controller.save_robot_config()
 
-@config_bp.route('/robot', methods=['PATCH'])
+@config_bp.route('/config', methods=['PATCH', 'OPTIONS'])
 def update_robot_config():
     return config_controller.update_robot_config()
 

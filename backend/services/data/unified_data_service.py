@@ -38,6 +38,30 @@ class UnifiedDataService:
     def __init__(self):
         self._providers: Dict[str, DataProvider] = {}
         self._active_provider: Optional[str] = None
+
+    def sync_from_trading_service(self) -> None:
+        """Attach to already-connected broker sessions (prevents parallel/simulated providers)."""
+        try:
+            from services.trading_service import trading_service
+        except Exception:
+            return
+
+        try:
+            iq = trading_service.get_iq_option()
+        except Exception:
+            iq = None
+
+        if iq and getattr(iq, 'check_connect', None):
+            try:
+                if iq.check_connect():
+                    if 'iqoption' not in self._providers:
+                        self._providers['iqoption'] = self.PROVIDERS['iqoption']()
+                    provider = self._providers['iqoption']
+                    if hasattr(provider, 'attach_session'):
+                        provider.attach_session(iq)
+                        self._active_provider = 'iqoption'
+            except Exception:
+                pass
     
     def connect(self, platform: str, credentials: Dict) -> Dict:
         """
@@ -112,6 +136,8 @@ class UnifiedDataService:
     
     def is_connected(self, platform: Optional[str] = None) -> bool:
         """Check if connected to a platform."""
+        # Prefer real broker sessions if available
+        self.sync_from_trading_service()
         p = platform or self._active_provider
         if p and p in self._providers:
             return self._providers[p].is_connected()
@@ -177,6 +203,7 @@ class UnifiedDataService:
     
     def get_symbols(self, platform: Optional[str] = None) -> List[str]:
         """Get available symbols from a platform."""
+        self.sync_from_trading_service()
         p = platform or self._active_provider
         
         if not p or p not in self._providers:
@@ -186,6 +213,7 @@ class UnifiedDataService:
     
     def get_current_price(self, symbol: str, platform: Optional[str] = None) -> float:
         """Get current price for a symbol."""
+        self.sync_from_trading_service()
         p = platform or self._active_provider
         
         if not p or p not in self._providers:
@@ -195,6 +223,7 @@ class UnifiedDataService:
     
     def get_connection_status(self) -> Dict:
         """Get connection status for all platforms."""
+        self.sync_from_trading_service()
         status = {}
         
         for platform, provider in self._providers.items():

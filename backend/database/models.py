@@ -525,3 +525,87 @@ class PerformanceMetrics(Base):
             'profit_factor': self.profit_factor,
             'max_drawdown': self.max_drawdown,
         }
+
+
+class MLAnalysis(Base):
+    """
+    Modelo para almacenar análisis de ML y del asistente de trading.
+    Permite evaluar el rendimiento del robot y mejorar las predicciones.
+    """
+    __tablename__ = 'ml_analysis'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    analysis_id = Column(String(64), unique=True, default=generate_uuid, index=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Tipo de análisis
+    analysis_type = Column(String(32), nullable=False)  # 'trade_feedback', 'strategy_analysis', 'market_insight', 'session_summary'
+    
+    # Contexto
+    trade_id = Column(String(64), nullable=True, index=True)
+    symbol = Column(String(32), nullable=True, index=True)
+    strategy_name = Column(String(64), nullable=True)
+    direction = Column(String(8), nullable=True)
+    
+    # Resultado de la operación analizada
+    trade_result = Column(String(16), nullable=True)  # win, loss, pending
+    trade_pnl = Column(Float, nullable=True)
+    confidence_at_entry = Column(Float, nullable=True)
+    
+    # Análisis del asistente
+    analysis_title = Column(String(256), nullable=True)
+    analysis_content = Column(Text, nullable=True)
+    feedback_type = Column(String(32), nullable=True)  # success, warning, info
+    priority = Column(String(16), default='medium')
+    
+    # Razones y aprendizajes
+    win_reasons = Column(JSON, nullable=True)
+    loss_reasons = Column(JSON, nullable=True)
+    improvement_suggestions = Column(JSON, nullable=True)
+    lessons_learned = Column(JSON, nullable=True)
+    
+    # Indicadores al momento del análisis
+    indicators_snapshot = Column(JSON, nullable=True)
+    market_conditions = Column(JSON, nullable=True)
+    
+    # Métricas de estrategia al momento
+    strategy_win_rate = Column(Float, nullable=True)
+    strategy_total_trades = Column(Integer, nullable=True)
+    strategy_pnl = Column(Float, nullable=True)
+    
+    # ML insights
+    ml_prediction_correct = Column(Boolean, nullable=True)
+    ml_confidence = Column(Float, nullable=True)
+    pattern_detected = Column(String(128), nullable=True)
+    
+    __table_args__ = (
+        Index('idx_ml_analysis_type_date', 'analysis_type', 'created_at'),
+        Index('idx_ml_analysis_trade', 'trade_id'),
+        Index('idx_ml_analysis_symbol_strategy', 'symbol', 'strategy_name'),
+    )
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'analysis_id': self.analysis_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'analysis_type': self.analysis_type,
+            'trade_id': self.trade_id,
+            'symbol': self.symbol,
+            'strategy_name': self.strategy_name,
+            'direction': self.direction,
+            'trade_result': self.trade_result,
+            'trade_pnl': self.trade_pnl,
+            'confidence_at_entry': self.confidence_at_entry,
+            'analysis_title': self.analysis_title,
+            'analysis_content': self.analysis_content,
+            'feedback_type': self.feedback_type,
+            'priority': self.priority,
+            'win_reasons': self.win_reasons,
+            'loss_reasons': self.loss_reasons,
+            'improvement_suggestions': self.improvement_suggestions,
+            'lessons_learned': self.lessons_learned,
+            'strategy_win_rate': self.strategy_win_rate,
+            'ml_prediction_correct': self.ml_prediction_correct,
+        }

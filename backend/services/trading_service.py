@@ -31,15 +31,30 @@ class TradingService:
     # IQ Option
     def get_iq_option(self) -> Optional[IQ_Option]:
         instance = self.sessions.get('iqoption')
-        if instance and not instance.check_connect():
-            logging.warning("Conexión de IQ Option perdida. Intentando reconectar...")
-            # La librería iqoptionapi suele manejar reconexiones automáticas si el websocket cae,
-            # pero aquí podemos forzar una verificación o marcarla como None si falla mucho.
-            if not instance.check_connect():
-                self.sessions['iqoption'] = None
-                self.active_platform = None
-                return None
-        return instance
+        if not instance:
+            return None
+
+        try:
+            if instance.check_connect():
+                return instance
+        except Exception:
+            pass
+
+        logging.warning("Conexión de IQ Option perdida. Intentando reconectar...")
+        try:
+            instance.connect()
+        except Exception as e:
+            logging.error(f"Error al reconectar IQ Option: {e}")
+
+        try:
+            if instance.check_connect():
+                return instance
+        except Exception:
+            pass
+
+        self.sessions['iqoption'] = None
+        self.active_platform = None
+        return None
 
     def set_iq_option(self, instance: IQ_Option):
         self.sessions['iqoption'] = instance

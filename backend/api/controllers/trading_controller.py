@@ -40,20 +40,26 @@ class TradingController:
     @validate_schema(ConnectSchema)
     def connect(self, validated_data: ConnectSchema):
         try:
+            logging.info(f"Intento de conexión recibido para plataforma: {validated_data.platform}")
             credentials = validated_data.credentials
             account_type = validated_data.account_type
             
             email = credentials.email
-            password = credentials.password
-
-            if not email or not password:
+            # No loguear la contraseña por seguridad
+            
+            if not email or not credentials.password:
+                logging.error("Credenciales incompletas recibidas")
                 return jsonify({'error': 'Credenciales incompletas'}), 400
 
+            logging.info(f"Intentando conectar a IQ Option con email: {email}")
+            
             # Crear nueva instancia de IQ_Option
-            iq_instance = IQ_Option(email, password)
+            iq_instance = IQ_Option(email, credentials.password)
             
             # Intentar conexión
             status, reason = iq_instance.connect()
+            
+            logging.info(f"Resultado de conexión IQ Option: status={status}, reason={reason}")
             
             if status:
                 # Cambiar a cuenta demo/real según corresponda
@@ -64,6 +70,13 @@ class TradingController:
                 
                 # Guardar en el servicio centralizado
                 trading_service.set_iq_option(iq_instance)
+
+                # Alinear data service con la sesión real (evitar providers paralelos/demo)
+                try:
+                    from services.data import unified_data_service
+                    unified_data_service.sync_from_trading_service()
+                except Exception:
+                    pass
                 
                 self.current_account_type = account_type
                 self.last_check = datetime.now()

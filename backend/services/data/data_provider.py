@@ -80,6 +80,7 @@ class DataProvider(ABC):
         # Normalize column names
         column_mapping = {
             'o': 'open', 'h': 'high', 'l': 'low', 'c': 'close', 'v': 'volume',
+            'max': 'high', 'min': 'low',
             'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 
             'Volume': 'volume', 'from': 'timestamp', 'at': 'timestamp',
             'time': 'timestamp', 'tick_volume': 'volume'
@@ -111,6 +112,22 @@ class IQOptionDataProvider(DataProvider):
     def __init__(self):
         self.api = None
         self._connected = False
+
+    def attach_session(self, api, account_type: Optional[str] = None) -> bool:
+        try:
+            self.api = api
+            self._connected = bool(self.api and self.api.check_connect())
+            if self._connected and account_type:
+                try:
+                    self.api.change_balance(account_type)
+                except Exception:
+                    pass
+            return self._connected
+        except Exception as e:
+            logger.error(f"IQ Option attach session error: {e}")
+            self.api = None
+            self._connected = False
+            return False
     
     def connect(self, credentials: Dict) -> bool:
         """Connect to IQ Option."""

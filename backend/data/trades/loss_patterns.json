@@ -1,0 +1,65 @@
+[
+  {
+    "trade_id": "T1769134619441",
+    "timestamp": "2026-01-22T21:16:59.441450",
+    "symbol": "EURJPY",
+    "direction": "put",
+    "confidence": 75.0,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "ema_fast": 1.1299,
+      "ema_slow": 1.1302,
+      "ema_separation": -0.0296,
+      "rsi": 37.2608,
+      "close": 1.125
+    },
+    "reasons": [
+      "EMA r\u00e1pida (9) < EMA lenta (21)",
+      "Cruce bajista reciente",
+      "RSI < 50 confirma tendencia bajista"
+    ],
+    "entry_price": 1.1013304731093383,
+    "exit_price": 1.1018367422998228,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1769134667028",
+    "timestamp": "2026-01-22T21:17:47.029007",
+    "symbol": "EURJPY",
+    "direction": "put",
+    "confidence": 75.0,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "ema_fast": 1.1281,
+      "ema_slow": 1.1282,
+      "ema_separation": -0.0068,
+      "rsi": 40.3535,
+      "close": 1.125
+    },
+    "reasons": [
+      "EMA r\u00e1pida (9) < EMA lenta (21)",
+      "Cruce bajista reciente",
+      "RSI en zona neutral (40-60)",
+      "RSI < 50 confirma tendencia bajista"
+    ],
+    "entry_price": 1.0994175275299318,
+    "exit_price": 1.1001814506194874,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  }
+]

@@ -52,6 +52,18 @@ def get_trade_history():
     return live_trading_controller.get_trade_history()
 
 
+@live_trading_bp.route('/history/advanced', methods=['GET'])
+def get_trade_history_advanced():
+    """Get filtered trade history."""
+    return live_trading_controller.get_trade_history_advanced()
+
+
+@live_trading_bp.route('/history/export', methods=['GET'])
+def export_trade_history():
+    """Export filtered trade history."""
+    return live_trading_controller.export_trade_history()
+
+
 @live_trading_bp.route('/signals', methods=['GET'])
 def get_signal_log():
     """Get recent signals."""

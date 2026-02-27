@@ -23,6 +23,7 @@ Base = declarative_base()
 _engine = None
 _session_factory = None
 db = None
+ALLOW_SQLITE_FALLBACK = os.environ.get('ALLOW_SQLITE_FALLBACK', 'false').lower() == 'true'
 
 def get_database_url():
     """Obtener URL de base de datos desde variables de entorno"""
@@ -34,25 +35,27 @@ def get_database_url():
         if db_url.startswith('postgres://'):
             db_url = db_url.replace('postgres://', 'postgresql://', 1)
         return db_url
-    
-    # Construir URL desde variables individuales de MySQL
-    mysql_host = os.environ.get('MYSQL_HOST', 'localhost')
-    mysql_port = os.environ.get('MYSQL_PORT', '3306')
-    mysql_user = os.environ.get('MYSQL_USER', 'root')
-    mysql_password = os.environ.get('MYSQL_PASSWORD', '')
-    mysql_database = os.environ.get('MYSQL_DATABASE', 'trading_bot')
-    
-    # Si hay configuración MySQL, usarla
-    if mysql_host and mysql_database:
-        if mysql_password:
-            return f'mysql+pymysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_database}'
+
+    # Construir URL desde variables individuales de PostgreSQL
+    pg_host = os.environ.get('PG_HOST') or os.environ.get('POSTGRES_HOST', 'localhost')
+    pg_port = os.environ.get('PG_PORT') or os.environ.get('POSTGRES_PORT', '5432')
+    pg_user = os.environ.get('PG_USER') or os.environ.get('POSTGRES_USER', 'postgres')
+    pg_password = os.environ.get('PG_PASSWORD') or os.environ.get('POSTGRES_PASSWORD', '')
+    pg_database = os.environ.get('PG_DATABASE') or os.environ.get('POSTGRES_DB', 'trading_bot')
+
+    # Si hay configuración PostgreSQL, usarla (driver pg8000)
+    if pg_host and pg_database:
+        if pg_password:
+            return f'postgresql+pg8000://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_database}'
         else:
-            return f'mysql+pymysql://{mysql_user}@{mysql_host}:{mysql_port}/{mysql_database}'
-    
-    # Fallback a SQLite
-    db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'trading_bot.db')
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    return f'sqlite:///{db_path}'
+            return f'postgresql+pg8000://{pg_user}@{pg_host}:{pg_port}/{pg_database}'
+
+    # Si no hay configuración explícita, no usar SQLite por defecto a menos que se permita
+    if ALLOW_SQLITE_FALLBACK:
+        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'trading_bot.db')
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        return f'sqlite:///{db_path}'
+    raise RuntimeError('No se encontró configuración de base de datos. Defina DATABASE_URL o variables PG_HOST/PG_DATABASE')
 
 def init_db(app=None):
     """Inicializar la base de datos y crear tablas"""
@@ -60,34 +63,6 @@ def init_db(app=None):
     
     database_url = get_database_url()
     logger.info(f"Intentando conectar a: {database_url.split('@')[0] if '@' in database_url else database_url.split('?')[0]}")
-    
-    # Intentar MySQL primero, si falla usar SQLite
-    try:
-        if 'mysql' in database_url:
-            # Probar conexión MySQL
-            import pymysql
-            parts = database_url.replace('mysql+pymysql://', '').split('@')
-            if len(parts) == 2:
-                user_pass = parts[0].split(':')
-                host_db = parts[1].split('/')
-                user = user_pass[0]
-                password = user_pass[1] if len(user_pass) > 1 else ''
-                host_port = host_db[0].split(':')
-                host = host_port[0]
-                port = int(host_port[1]) if len(host_port) > 1 else 3306
-                db_name = host_db[1] if len(host_db) > 1 else 'trading_bot'
-                
-                # Test connection
-                conn = pymysql.connect(host=host, port=port, user=user, password=password)
-                conn.close()
-                logger.info("Conexión MySQL verificada correctamente")
-    except Exception as mysql_error:
-        logger.warning(f"MySQL no disponible: {mysql_error}")
-        logger.info("Usando SQLite como alternativa...")
-        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'trading_bot.db')
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        database_url = f'sqlite:///{db_path}'
-    
     # Configuración del engine
     engine_config = {
         'echo': os.environ.get('SQL_DEBUG', 'false').lower() == 'true',

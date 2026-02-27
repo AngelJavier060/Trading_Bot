@@ -1,37 +1,39 @@
 version: "3.9"
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: trading_postgres
+  trading-db:
+    image: postgres:16-alpine
+    container_name: trading_db
     restart: unless-stopped
     environment:
       POSTGRES_DB: trading_bot
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: trading_user
+      POSTGRES_PASSWORD: trading_pass
     volumes:
       - db_data:/var/lib/postgresql/data
+    # No exponemos el puerto 5432 al host para evitar conflictos con otros PostgreSQL
 
-  backend:
+  trading-backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: trading_backend
     restart: unless-stopped
     depends_on:
-      - db
+      - trading-db
     environment:
-      # URL de conexión a PostgreSQL dentro de la red de Docker
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/trading_bot
+      PG_HOST: trading-db
+      PG_PORT: 5432
+      PG_USER: trading_user
+      PG_PASSWORD: trading_pass
+      PG_DATABASE: trading_bot
       ALLOW_SQLITE_FALLBACK: "false"
       SQL_DEBUG: "false"
-      SECRET_KEY: "dev-secret-change-me"
+      SECRET_KEY: "prod-secret-change-me"
     ports:
-      - "5000:5000"
+      # Exponemos el backend en el puerto 5001 del host para no chocar con otros servicios
+      - "5001:5000"
     volumes:
-      # Montar el código para facilitar el desarrollo (hot-reload básico)
       - ./backend:/app
 
 volumes:

@@ -8,7 +8,7 @@ websocket-client==0.56.0
 requests
 webdriver-manager
 selenium
-MetaTrader5
+MetaTrader5; platform_system == "Windows"
 pydantic
 email-validator
 scikit-learn

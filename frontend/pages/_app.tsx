@@ -2,12 +2,14 @@ import '../styles/globals.css'; // Asegúrate de que Tailwind esté configurado 
 import { AppProps } from 'next/app';
 import { Toaster } from 'react-hot-toast';
 import Head from 'next/head';
+import { ThemeProvider } from '../context/ThemeContext';
 
 function MyApp({ Component, pageProps }: AppProps) {
   return (
-    <>
+    <ThemeProvider>
       <Head>
         <link rel="icon" href="/favicon.ico" />
+        <title>AI Trading System</title>
       </Head>
       <Component {...pageProps} />
       <Toaster 
@@ -32,7 +34,7 @@ function MyApp({ Component, pageProps }: AppProps) {
           },
         }}
       />
-    </>
+    </ThemeProvider>
   );
 }
 

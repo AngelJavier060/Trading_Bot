@@ -35,6 +35,64 @@ const api = {
     return data;
   },
 
+  getLiveHistoryAdvanced: async (params?: {
+    limit?: number;
+    account_type?: string;
+    symbol?: string;
+    result?: string;
+    platform?: string;
+    strategy?: string;
+    min_conf?: number;
+    max_conf?: number;
+    from?: string;
+    to?: string;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.limit) q.append('limit', String(params.limit));
+    if (params?.account_type) q.append('account_type', params.account_type);
+    if (params?.symbol) q.append('symbol', params.symbol);
+    if (params?.result) q.append('result', params.result);
+    if (params?.platform) q.append('platform', params.platform);
+    if (params?.strategy) q.append('strategy', params.strategy);
+    if (typeof params?.min_conf === 'number') q.append('min_conf', String(params.min_conf));
+    if (typeof params?.max_conf === 'number') q.append('max_conf', String(params.max_conf));
+    if (params?.from) q.append('from', params.from);
+    if (params?.to) q.append('to', params.to);
+    const url = `${BASE_URL}/api/live/history/advanced${q.toString() ? '?' + q.toString() : ''}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener historial avanzado');
+    }
+    return data;
+  },
+
+  buildLiveHistoryExportUrl: (params?: {
+    limit?: number;
+    account_type?: string;
+    symbol?: string;
+    result?: string;
+    platform?: string;
+    strategy?: string;
+    min_conf?: number;
+    max_conf?: number;
+    from?: string;
+    to?: string;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.limit) q.append('limit', String(params.limit));
+    if (params?.account_type) q.append('account_type', params.account_type);
+    if (params?.symbol) q.append('symbol', params.symbol);
+    if (params?.result) q.append('result', params.result);
+    if (params?.platform) q.append('platform', params.platform);
+    if (params?.strategy) q.append('strategy', params.strategy);
+    if (typeof params?.min_conf === 'number') q.append('min_conf', String(params.min_conf));
+    if (typeof params?.max_conf === 'number') q.append('max_conf', String(params.max_conf));
+    if (params?.from) q.append('from', params.from);
+    if (params?.to) q.append('to', params.to);
+    return `${BASE_URL}/api/live/history/export${q.toString() ? '?' + q.toString() : ''}`;
+  },
+
   buy: async (order: { [key: string]: any }) => {
     const asset = order.asset || order.activo;
     const amount = order.amount ?? order.cantidad;
@@ -240,6 +298,7 @@ const api = {
     login: number;
     password: string;
     server: string;
+    terminal_path?: string;
   }) => {
     try {
       const response = await fetch(`${BASE_URL}/api/mt5/connect`, {
@@ -288,6 +347,30 @@ const api = {
       return await response.json();
     } catch (error: any) {
       throw new Error(error.message || 'Error al obtener datos históricos');
+    }
+  },
+
+  // Unified candles endpoint (demo fallback if no active platform)
+  getCandles: async (
+    symbol: string,
+    timeframe: string,
+    count: number = 500,
+    platform?: string
+  ) => {
+    try {
+      const q = new URLSearchParams();
+      q.append('symbol', symbol);
+      q.append('timeframe', timeframe);
+      q.append('count', String(count));
+      if (platform) q.append('platform', platform);
+      const response = await fetch(`${BASE_URL}/api/data/candles?${q.toString()}`);
+      const data = await response.json();
+      if (!response.ok || data.status === 'error') {
+        throw new Error(data.message || 'Error al obtener velas');
+      }
+      return data;
+    } catch (error: any) {
+      throw new Error(error.message || 'Error al obtener velas');
     }
   },
 
@@ -483,6 +566,154 @@ const api = {
     const data = await response.json();
     if (!response.ok || data.status === 'error') {
       throw new Error(data.message || 'Error al cargar modelos');
+    }
+    return data;
+  },
+
+  // ==================== LIVE TRADING API ====================
+
+  getLiveStatus: async () => {
+    const response = await fetch(`${BASE_URL}/api/live/status`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener estado del bot');
+    }
+    return data;
+  },
+
+  startLiveTrading: async (config?: {
+    mode?: string;
+    platform?: string;
+    symbols?: string[];
+    strategies?: string[];
+    amount?: number;
+    min_confidence?: number;
+    expiration?: number;
+  }) => {
+    const response = await fetch(`${BASE_URL}/api/live/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config || {}),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al iniciar trading');
+    }
+    return data;
+  },
+
+  stopLiveTrading: async () => {
+    const response = await fetch(`${BASE_URL}/api/live/stop`, {
+      method: 'POST',
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al detener trading');
+    }
+    return data;
+  },
+
+  scanMarket: async (params?: {
+    symbols?: string[];
+    strategies?: string[];
+    platform?: string;
+  }) => {
+    const response = await fetch(`${BASE_URL}/api/live/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params || {}),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al escanear mercado');
+    }
+    return data;
+  },
+
+  executeLiveTrade: async (trade: {
+    symbol: string;
+    direction: string;
+    amount: number;
+    strategy: string;
+    confidence: number;
+    indicators?: Record<string, any>;
+    reasons?: string[];
+    ml_prediction?: any;
+  }) => {
+    const response = await fetch(`${BASE_URL}/api/live/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(trade),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al ejecutar trade');
+    }
+    return data;
+  },
+
+  getLiveHistory: async (limit?: number, accountType?: string) => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (accountType) params.append('account_type', accountType);
+    
+    const url = `${BASE_URL}/api/live/history${params.toString() ? '?' + params.toString() : ''}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener historial');
+    }
+    return data;
+  },
+
+  getLiveSignals: async (limit?: number) => {
+    const url = `${BASE_URL}/api/live/signals${limit ? '?limit=' + limit : ''}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener señales');
+    }
+    return data;
+  },
+
+  getLossAnalysis: async () => {
+    const response = await fetch(`${BASE_URL}/api/live/loss-analysis`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener análisis de pérdidas');
+    }
+    return data;
+  },
+
+  getRiskState: async () => {
+    const response = await fetch(`${BASE_URL}/api/trading/risk-state`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener estado de riesgo');
+    }
+    return data;
+  },
+
+  // ==================== ROBOT CONFIG API ====================
+
+  getRobotConfig: async () => {
+    const response = await fetch(`${BASE_URL}/api/robot/config`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener configuración');
+    }
+    return data;
+  },
+
+  saveRobotConfig: async (config: any) => {
+    const response = await fetch(`${BASE_URL}/api/robot/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al guardar configuración');
     }
     return data;
   }

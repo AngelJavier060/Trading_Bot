@@ -1,4 +1,6 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+'use client';
+
+import React, { useEffect, useRef, useState, useCallback, useId } from 'react';
 
 declare global {
   interface Window {
@@ -24,6 +26,14 @@ interface TradingViewChartProps {
   platform?: 'iqoption' | 'mt5';
   onSymbolChange?: (symbol: string) => void;
   height?: number;
+  emaLength?: number;
+  rsiLength?: number;
+  emaColor?: string;
+  rsiColor?: string;
+  emaLineWidth?: number;
+  rsiLineWidth?: number;
+  showEMA?: boolean;
+  showRSI?: boolean;
 }
 
 const TradingViewChart: React.FC<TradingViewChartProps> = ({
@@ -35,15 +45,33 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
   platform = 'iqoption',
   onSymbolChange,
   height = 500,
+  emaLength = 9,
+  rsiLength = 21,
+  emaColor = '#10B981',
+  rsiColor = '#8B5CF6',
+  emaLineWidth = 2,
+  rsiLineWidth = 2,
+  showEMA = true,
+  showRSI = true,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<any>(null);
+  const studyIdsRef = useRef<{ ema?: any; rsi?: any }>({});
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [selectedSignal, setSelectedSignal] = useState<Signal | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [chartReady, setChartReady] = useState(false);
+  const [reapplySeed, setReapplySeed] = useState(0);
   
-  // Generate unique container ID
-  const containerId = useRef(`tradingview_${Math.random().toString(36).substr(2, 9)}`);
+  // Generate a stable, SSR-safe container ID
+  const reactId = useId();
+  const containerId = useRef(`tradingview_${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`);
+
+  // Ensure we only render the chart on client after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Load TradingView script
   useEffect(() => {
@@ -71,74 +99,137 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
     };
   }, []);
 
-  // Initialize widget
+  // Initialize widget (wait until container is attached to DOM)
   useEffect(() => {
-    if (!isLoaded || !containerRef.current || loadError) return;
-    
-    // Ensure TradingView is available
+    if (!mounted || !isLoaded || !containerRef.current || loadError) return;
+
     if (!window.TradingView || !window.TradingView.widget) {
       console.error('TradingView not available');
       setLoadError(true);
       return;
     }
 
-    try {
-      // Format symbol based on platform
-      const formattedSymbol = platform === 'mt5' 
-        ? `FX:${symbol}` 
-        : `FX:${symbol}`;
+    let cancelled = false;
 
-      widgetRef.current = new window.TradingView.widget({
-        container_id: containerId.current,
-        symbol: formattedSymbol,
-        interval: interval,
-        timezone: 'America/New_York',
-        theme: theme,
-        style: '1',
-        locale: 'es',
-        toolbar_bg: '#f1f3f6',
-        enable_publishing: false,
-        allow_symbol_change: true,
-        save_image: true,
-        studies: [
-          'MAExp@tv-basicstudies',
-          'RSI@tv-basicstudies',
-          'MACD@tv-basicstudies',
-        ],
-        disabled_features: [
-          'use_localstorage_for_settings',
-        ],
-        enabled_features: [
-          'study_templates',
-        ],
-        overrides: {
-          'mainSeriesProperties.candleStyle.upColor': '#26a69a',
-          'mainSeriesProperties.candleStyle.downColor': '#ef5350',
-          'mainSeriesProperties.candleStyle.wickUpColor': '#26a69a',
-          'mainSeriesProperties.candleStyle.wickDownColor': '#ef5350',
-        },
-        loading_screen: {
-          backgroundColor: theme === 'dark' ? '#1e222d' : '#ffffff',
-          foregroundColor: theme === 'dark' ? '#2962ff' : '#2962ff',
-        },
-        width: '100%',
-        height: height,
-      });
-    } catch (error) {
-      console.error('Error initializing TradingView:', error);
-      setLoadError(true);
-    }
+    const init = () => {
+      if (cancelled) return;
+      const el = document.getElementById(containerId.current);
+      if (!el || !el.parentNode) {
+        requestAnimationFrame(init);
+        return;
+      }
+      try {
+        // Format symbol for TradingView
+        const baseSymbol = symbol.includes('-OTC') ? symbol.replace('-OTC', '') : symbol;
+        const formattedSymbol = `FX:${baseSymbol}`;
+
+        widgetRef.current = new window.TradingView.widget({
+          container_id: containerId.current,
+          symbol: formattedSymbol,
+          interval: interval,
+          timezone: 'America/New_York',
+          theme: theme,
+          style: 1,
+          locale: 'es',
+          toolbar_bg: '#f1f3f6',
+          enable_publishing: false,
+          allow_symbol_change: true,
+          save_image: true,
+          overrides: {
+            'mainSeriesProperties.candleStyle.upColor': '#26a69a',
+            'mainSeriesProperties.candleStyle.downColor': '#ef5350',
+            'mainSeriesProperties.candleStyle.wickUpColor': '#26a69a',
+            'mainSeriesProperties.candleStyle.wickDownColor': '#ef5350',
+          },
+          loading_screen: {
+            backgroundColor: theme === 'dark' ? '#1e222d' : '#ffffff',
+            foregroundColor: theme === 'dark' ? '#2962ff' : '#2962ff',
+          },
+          width: '100%',
+          height: height,
+        });
+        if (widgetRef.current && widgetRef.current.onChartReady) {
+          widgetRef.current.onChartReady(() => {
+            console.debug('[TV] chart ready', { symbol: formattedSymbol, interval });
+            setChartReady(true);
+          });
+        }
+      } catch (error) {
+        console.error('Error initializing TradingView:', error);
+        setLoadError(true);
+      }
+    };
+
+    requestAnimationFrame(init);
 
     return () => {
+      cancelled = true;
       try {
         if (widgetRef.current && widgetRef.current.remove) {
           widgetRef.current.remove();
         }
+        studyIdsRef.current = {};
+        widgetRef.current = null;
+        setChartReady(false);
       } catch (e) {
         // Ignore cleanup errors
       }
     };
-  }, [isLoaded, symbol, interval, theme, platform, height, loadError]);
+  }, [mounted, isLoaded, symbol, interval, theme, platform, height, loadError]);
+
+  // Update EMA/RSI studies on config changes without recreating the widget
+  useEffect(() => {
+    if (!chartReady || !widgetRef.current) return;
+    const apply = () => {
+      try {
+        const chart = widgetRef.current.activeChart ? widgetRef.current.activeChart() : widgetRef.current.chart?.();
+        if (!chart) return;
+
+        if (studyIdsRef.current.ema && chart.removeEntity) {
+          try { chart.removeEntity(studyIdsRef.current.ema); } catch (e) { console.debug('[TV] remove EMA failed', e); }
+          studyIdsRef.current.ema = undefined;
+        }
+        if (studyIdsRef.current.rsi && chart.removeEntity) {
+          try { chart.removeEntity(studyIdsRef.current.rsi); } catch (e) { console.debug('[TV] remove RSI failed', e); }
+          studyIdsRef.current.rsi = undefined;
+        }
+
+        if (showEMA) {
+          let id: any = undefined;
+          try {
+            id = chart.createStudy('Moving Average Exponential', false, false, emaLength, {
+              'Plot.color': emaColor,
+              'Plot.linewidth': emaLineWidth,
+            });
+          } catch (e1) {
+            console.debug('[TV] EMA overrides failed, fallback', e1);
+            try { id = chart.createStudy('Moving Average Exponential', false, false, emaLength); } catch (e2) { console.error('[TV] EMA study failed', e2); }
+          }
+          studyIdsRef.current.ema = id;
+        }
+        if (showRSI) {
+          let id: any = undefined;
+          try {
+            id = chart.createStudy('Relative Strength Index', false, false, rsiLength, {
+              'RSI.color': rsiColor,
+              'RSI.linewidth': rsiLineWidth,
+            });
+          } catch (e1) {
+            console.debug('[TV] RSI overrides failed, fallback', e1);
+            try { id = chart.createStudy('Relative Strength Index', false, false, rsiLength); } catch (e2) { console.error('[TV] RSI study failed', e2); }
+          }
+          studyIdsRef.current.rsi = id;
+        }
+      } catch (err) {
+        console.error('[TV] apply studies error', err);
+      }
+    };
+    // Defer a tick to ensure chart fully ready
+    const t = setTimeout(apply, 0);
+    return () => clearTimeout(t);
+  }, [chartReady, reapplySeed, emaLength, rsiLength, emaColor, rsiColor, emaLineWidth, rsiLineWidth, showEMA, showRSI]);
+
+  // Note: some embed builds may not expose event subscriptions; keep logic minimal
 
   // Render XAI Signal Panel
   const renderSignalPanel = () => {
@@ -359,12 +450,14 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
       )}
 
       {/* Chart Container */}
-      <div 
-        id={containerId.current} 
-        ref={containerRef}
-        className="rounded-xl overflow-hidden"
-        style={{ minHeight: height, display: loadError ? 'none' : 'block' }}
-      />
+      {mounted && (
+        <div 
+          id={containerId.current} 
+          ref={containerRef}
+          className="rounded-xl overflow-hidden"
+          style={{ minHeight: height, display: loadError ? 'none' : 'block' }}
+        />
+      )}
 
       {/* XAI Signal Panel */}
       {renderSignalPanel()}

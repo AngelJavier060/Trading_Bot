@@ -52,6 +52,18 @@ const MLDashboard = () => {
     strategy: 'ema_rsi',
   });
 
+  // Indicators config (EMA/RSI)
+  const [indicators, setIndicators] = useState({
+    emaLength: 9,
+    rsiLength: 21,
+    emaColor: '#10B981',
+    rsiColor: '#8B5CF6',
+    emaLineWidth: 2,
+    rsiLineWidth: 2,
+    showEMA: true,
+    showRSI: true,
+  });
+
   useEffect(() => {
     loadMLStatus();
   }, []);
@@ -340,6 +352,87 @@ const MLDashboard = () => {
                   <option value="ichimoku">Ichimoku</option>
                 </select>
               </div>
+
+              {/* Indicators UI */}
+              <div className="border-t pt-4">
+                <h3 className="text-md font-bold text-gray-800 mb-3">Indicadores (EMA / RSI)</h3>
+
+                {/* EMA Config */}
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={indicators.showEMA}
+                      onChange={(e) => setIndicators(prev => ({ ...prev, showEMA: e.target.checked }))}
+                    />
+                    <span className="text-sm">Mostrar EMA</span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={indicators.emaLength}
+                      onChange={(e) => setIndicators(prev => ({ ...prev, emaLength: Number(e.target.value) }))}
+                      className="p-2 border rounded-lg w-full"
+                      placeholder="Período"
+                    />
+                    <input
+                      type="color"
+                      value={indicators.emaColor}
+                      onChange={(e) => setIndicators(prev => ({ ...prev, emaColor: e.target.value }))}
+                      className="p-2 border rounded-lg w-full"
+                      title="Color EMA"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={indicators.emaLineWidth}
+                      onChange={(e) => setIndicators(prev => ({ ...prev, emaLineWidth: Number(e.target.value) }))}
+                      className="p-2 border rounded-lg w-full"
+                      title="Grosor línea EMA"
+                    />
+                  </div>
+                </div>
+
+                {/* RSI Config */}
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={indicators.showRSI}
+                      onChange={(e) => setIndicators(prev => ({ ...prev, showRSI: e.target.checked }))}
+                    />
+                    <span className="text-sm">Mostrar RSI</span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={indicators.rsiLength}
+                      onChange={(e) => setIndicators(prev => ({ ...prev, rsiLength: Number(e.target.value) }))}
+                      className="p-2 border rounded-lg w-full"
+                      placeholder="Período"
+                    />
+                    <input
+                      type="color"
+                      value={indicators.rsiColor}
+                      onChange={(e) => setIndicators(prev => ({ ...prev, rsiColor: e.target.value }))}
+                      className="p-2 border rounded-lg w-full"
+                      title="Color RSI"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={indicators.rsiLineWidth}
+                      onChange={(e) => setIndicators(prev => ({ ...prev, rsiLineWidth: Number(e.target.value) }))}
+                      className="p-2 border rounded-lg w-full"
+                      title="Grosor línea RSI"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="mt-4 space-y-2">
@@ -391,6 +484,14 @@ const MLDashboard = () => {
               showXAI={true}
               platform={config.platform as any}
               height={400}
+              emaLength={indicators.emaLength}
+              rsiLength={indicators.rsiLength}
+              emaColor={indicators.emaColor}
+              rsiColor={indicators.rsiColor}
+              emaLineWidth={indicators.emaLineWidth}
+              rsiLineWidth={indicators.rsiLineWidth}
+              showEMA={indicators.showEMA}
+              showRSI={indicators.showRSI}
             />
           </div>
 

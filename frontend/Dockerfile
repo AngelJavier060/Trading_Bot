@@ -6,8 +6,8 @@ WORKDIR /app
 # Copiar archivos de dependencias
 COPY frontend/package*.json ./
 
-# Instalar dependencias
-RUN npm install --omit=dev
+# Instalar dependencias (incluyendo devDependencies para TypeScript/ESLint)
+RUN npm install
 
 # Copiar el código fuente del frontend
 COPY frontend/ ./

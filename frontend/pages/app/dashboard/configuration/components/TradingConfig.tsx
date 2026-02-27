@@ -39,18 +39,18 @@ const TradingConfig: React.FC<TradingConfigProps> = ({
     handleSaveConfig
 }) => {
     const handleTimeframeToggle = (timeframe: string) => {
-        if (timeframes.includes(timeframe)) {
-            setTimeframes(timeframes.filter(t => t !== timeframe));
+        if ((timeframes || []).includes(timeframe)) {
+            setTimeframes((timeframes || []).filter(t => t !== timeframe));
         } else {
-            setTimeframes([...timeframes, timeframe]);
+            setTimeframes([...(timeframes || []), timeframe]);
         }
     };
 
     const handleStrategyToggle = (strategy: string) => {
-        if (strategies.includes(strategy)) {
-            setStrategies(strategies.filter(s => s !== strategy));
+        if ((strategies || []).includes(strategy)) {
+            setStrategies((strategies || []).filter(s => s !== strategy));
         } else {
-            setStrategies([...strategies, strategy]);
+            setStrategies([...(strategies || []), strategy]);
         }
     };
 
@@ -109,7 +109,7 @@ const TradingConfig: React.FC<TradingConfigProps> = ({
                             key={tf}
                             onClick={() => handleTimeframeToggle(tf)}
                             className={`p-2 border rounded ${
-                                timeframes.includes(tf) ? 'bg-blue-500 text-white' : 'bg-white'
+                                (timeframes || []).includes(tf) ? 'bg-blue-500 text-white' : 'bg-white'
                             }`}
                         >
                             {tf}
@@ -127,7 +127,7 @@ const TradingConfig: React.FC<TradingConfigProps> = ({
                             key={strat}
                             onClick={() => handleStrategyToggle(strat)}
                             className={`p-2 border rounded ${
-                                strategies.includes(strat) ? 'bg-blue-500 text-white' : 'bg-white'
+                                (strategies || []).includes(strat) ? 'bg-blue-500 text-white' : 'bg-white'
                             }`}
                         >
                             {strat}

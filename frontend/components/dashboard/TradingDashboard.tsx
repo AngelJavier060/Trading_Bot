@@ -1,6 +1,5 @@
-'use client';
-
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/router';
 import { 
   Activity, Settings, TrendingUp, BarChart3, Bot, Bell, Clock, 
   AlertTriangle, Play, Pause, DollarSign, TrendingDown, Eye, Zap,
@@ -720,12 +719,13 @@ const LiveTradingTab: React.FC<{
   };
   iqConnected: boolean;
   mt5Connected: boolean;
+  onOpenConnectionModal?: () => void;
 }> = ({
   platform, setPlatform, tradingMode, setTradingMode,
   isTrading, onToggleTrading, liveStatus, signals, recentTrades,
   onExecuteSignal, onIgnoreSignal, onRefreshSignals, isScanning,
   selectedSymbol, onSymbolChange, marketType, onMarketTypeChange, selectedAssets,
-  configStrategies, configIndicators, iqConnected, mt5Connected
+  configStrategies, configIndicators, iqConnected, mt5Connected, onOpenConnectionModal
 }) => {
   // Get available symbols based on platform and market type
   const getAvailableSymbols = () => {
@@ -873,13 +873,12 @@ const LiveTradingTab: React.FC<{
     if (mode === 'auto') {
       if (platform === 'iqoption' && !iqConnected) {
         toast.error('Debes conectar IQ Option para usar el modo automático');
-        // Open modal instead
-        setConnectionModalOpen(true);
+        onOpenConnectionModal?.();
         return;
       }
       if (platform === 'mt5' && !mt5Connected) {
         toast.error('Debes conectar MT5 para usar el modo automático');
-        setConnectionModalOpen(true);
+        onOpenConnectionModal?.();
         return;
       }
     }
@@ -1467,6 +1466,7 @@ const BacktestingTab: React.FC<{
   result: BacktestResult | null;
   isRunning: boolean;
 }> = ({ strategies, onRunBacktest, result, isRunning }) => {
+  const router = useRouter();
   const [selectedStrategy, setSelectedStrategy] = useState('ema_rsi');
   const [timeframe, setTimeframe] = useState('5m');
   const [period, setPeriod] = useState('1month');
@@ -1474,16 +1474,29 @@ const BacktestingTab: React.FC<{
   const handleRun = () => {
     onRunBacktest({
       strategy_name: selectedStrategy,
+      assets: ['EURUSD'],
       timeframe,
-      period,
-      num_candles: period === '1month' ? 500 : period === '3months' ? 1500 : 3000
+      days_back: period === '1month' ? 30 : period === '3months' ? 58 : 58,
+      initial_capital: 10000,
+      trade_amount: 100,
+      payout_rate: 0.85,
+      min_confidence: 55,
+      expiration_minutes: 5,
     });
   };
 
   return (
     <div className="space-y-6">
       <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
-        <h3 className="text-lg font-semibold mb-4">Simulador de Estrategias</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Simulador de Estrategias · Datos Reales</h3>
+          <button
+            onClick={() => router.push('/app/dashboard/backtesting')}
+            className="flex items-center gap-2 text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <BarChart3 className="w-3.5 h-3.5" /> Análisis Profesional Completo
+          </button>
+        </div>
         
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div>
@@ -1624,24 +1637,24 @@ const TradingDashboard: React.FC = () => {
     takeProfit: 80,
     stopLoss: 100,
     expiration: 5,
-    // IQ Option Strategies (use backend identifiers)
-    iqStrategies: ['ema_rsi', 'macd', 'bollinger'],
+    // IQ Option Strategies (display names matching Config panel checkboxes)
+    iqStrategies: ['EMA + RSI'],
     emaFast: 9,
     emaSlow: 21,
     rsiPeriod: 14,
     rsiOverbought: 70,
     rsiOversold: 30,
     minConfidence: 65,
-    // MT5 Strategies (use backend identifiers)
-    mt5Strategies: ['ichimoku', 'ema_rsi'],
+    // MT5 Strategies (display names)
+    mt5Strategies: ['Ichimoku Cloud'],
     mt5LotSize: 0.1,
     mt5StopLoss: 50,
     mt5TakeProfit: 100,
     mt5MaxSpread: 3,
     // Market Type & Assets
     iqMarketType: 'binary' as 'binary' | 'otc',
-    selectedIQAssets: [] as string[],
-    selectedMT5Assets: [] as string[]
+    selectedIQAssets: ['EURUSD', 'GBPUSD', 'USDJPY'] as string[],
+    selectedMT5Assets: ['EURUSD', 'GBPUSD'] as string[]
   };
 
   // Config state - start with default, load from localStorage after mount to avoid hydration mismatch
@@ -1653,7 +1666,19 @@ const TradingDashboard: React.FC = () => {
     try {
       const saved = localStorage.getItem('trading_config');
       if (saved) {
-        setConfig(prev => ({ ...prev, ...JSON.parse(saved) }));
+        const parsed = JSON.parse(saved);
+        // Migrate: if iqStrategies uses old backend names, reset to display names
+        const backendNames = ['ema_rsi', 'macd', 'bollinger', 'rsi_divergence', 'ichimoku'];
+        const hasOldNames = (parsed.iqStrategies || []).some((s: string) => backendNames.includes(s));
+        if (hasOldNames) {
+          parsed.iqStrategies = ['EMA + RSI'];
+          parsed.mt5Strategies = ['Ichimoku Cloud'];
+        }
+        // Migrate: ensure selectedIQAssets has defaults if empty
+        if (!parsed.selectedIQAssets || parsed.selectedIQAssets.length === 0) {
+          parsed.selectedIQAssets = ['EURUSD', 'GBPUSD', 'USDJPY'];
+        }
+        setConfig(prev => ({ ...prev, ...parsed }));
       }
     } catch (e) {
       console.error('Error loading config from localStorage:', e);
@@ -1727,7 +1752,7 @@ const TradingDashboard: React.FC = () => {
     } catch (error) {
       // Not connected via direct check, try broker status
       try {
-        const brokerStatus = await fetch('http://127.0.0.1:5000/api/broker/status');
+        const brokerStatus = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000'}/api/broker/status`);
         const data = await brokerStatus.json();
         if (data.iqoption?.connected) {
           setIqConnected(true);
@@ -1839,11 +1864,22 @@ const TradingDashboard: React.FC = () => {
             : MT5_ASSETS.map(a => a.symbol);
         }
         
+        // Map display strategy names to backend identifiers
+        const strategyDisplayToId: Record<string, string> = {
+          'EMA + RSI': 'ema_rsi', 'MACD': 'macd', 'Bollinger Bands': 'bollinger',
+          'RSI Divergence': 'rsi_divergence', 'Ichimoku Cloud': 'ichimoku',
+          'Swing Trading': 'ema_rsi', 'Grid Trading': 'ema_rsi', 'Trend Following': 'ema_rsi',
+        };
+        const rawStrats = platform === 'iqoption' ? config.iqStrategies : config.mt5Strategies;
+        const mappedStrategies = rawStrats
+          .map((s: string) => strategyDisplayToId[s] || s.toLowerCase().replace(/[^a-z0-9]/g, '_'))
+          .filter((s: string, i: number, arr: string[]) => arr.indexOf(s) === i);
+
         await api.startLiveTrading({
           mode: tradingMode,
           platform,
           symbols: selectedSymbols,
-          strategies: platform === 'iqoption' ? config.iqStrategies : config.mt5Strategies,
+          strategies: mappedStrategies,
           amount: config.betAmount || 10,
           min_confidence: config.minConfidence || 60,
           expiration: config.expiration || 5
@@ -1920,7 +1956,11 @@ const TradingDashboard: React.FC = () => {
   const handleRunBacktest = async (params: any) => {
     setIsBacktesting(true);
     try {
-      const result = await api.runQuickBacktest(params);
+      const result = await api.runAutoBacktest(params);
+      if (result.result) {
+        setBacktestResult(result.result.metrics);
+        return;
+      }
       if (result.results) {
         setBacktestResult(result.results);
         toast.success('Backtest completado');
@@ -2062,6 +2102,7 @@ const TradingDashboard: React.FC = () => {
             }}
             iqConnected={iqConnected}
             mt5Connected={mt5Connected}
+            onOpenConnectionModal={() => setConnectionModalOpen(true)}
           />
         )}
 

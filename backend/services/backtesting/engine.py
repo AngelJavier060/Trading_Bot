@@ -40,6 +40,11 @@ class BacktestEngine:
         self.strategy = get_strategy(config.strategy_name)
         if config.strategy_params:
             self.strategy.params.update(config.strategy_params)
+
+        # How many candles ahead is the exit (based on expiration_minutes vs timeframe)
+        tf_minutes = self._timeframe_to_minutes(config.timeframe)
+        expiration_min = getattr(config, 'expiration_minutes', tf_minutes)
+        self.exit_candle_offset = max(1, round(expiration_min / tf_minutes))
         
         self.trades: List[Trade] = []
         self.equity_curve: List[Dict] = []
@@ -146,10 +151,13 @@ class BacktestEngine:
                 self.filtered_signals += 1
                 continue
             
-            # Simulate trade
+            # Simulate trade — exit after expiration_candles
+            exit_idx = i + self.exit_candle_offset
+            if exit_idx >= len(candles):
+                continue
             entry_candle = candles[i]
-            exit_candle = candles[i + 1]  # Simplified: next candle is result
-            
+            exit_candle  = candles[exit_idx]
+
             self._execute_trade(
                 asset=asset,
                 signal=signal,
@@ -437,6 +445,14 @@ class BacktestEngine:
                 'win_rate': round(win_rate, 1)
             })
         return summary
+
+
+    @staticmethod
+    def _timeframe_to_minutes(timeframe: str) -> int:
+        """Convert timeframe string to minutes."""
+        mapping = {'1m': 1, '5m': 5, '15m': 15, '30m': 30,
+                   '1h': 60, '4h': 240, '1d': 1440}
+        return mapping.get(timeframe.lower(), 5)
 
 
 def run_backtest(config_dict: Dict, candles_data: Dict[str, List[Dict]]) -> Dict:

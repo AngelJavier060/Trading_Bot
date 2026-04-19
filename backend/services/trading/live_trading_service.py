@@ -8,9 +8,12 @@ import time
 import json
 import os
 import logging
+import random
 from services.data import unified_data_service
 from services.trading_service import trading_service
 from services.ml.ml_service import ml_service
+from services.strategy_performance import strategy_performance
+from services.auto_trainer import auto_trainer
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field, asdict
@@ -178,6 +181,16 @@ class LiveTradingService:
         
         # Load history
         self._load_history()
+        # Rebuild strategy performance stats from stored history
+        try:
+            strategy_performance.rebuild_from_history([t.to_dict() for t in self.trade_history])
+        except Exception:
+            pass
+        # Start background ML auto-trainer
+        try:
+            auto_trainer.start()
+        except Exception as e:
+            logger.warning(f"AutoTrainer could not start: {e}")
     
     def start_bot(self, platform: str, account_type: str, config: Dict) -> Dict:
         """Start the trading bot with background scanning."""
@@ -190,7 +203,13 @@ class LiveTradingService:
         # Update configuration
         self.config = config
         self.symbols = config.get('symbols', ['EURUSD', 'GBPUSD', 'USDJPY'])
-        self.strategies = config.get('strategies', ['ema_rsi'])
+        # Use provided strategies OR auto-select best performers
+        configured = config.get('strategies', [])
+        if configured:
+            self.strategies = configured
+        else:
+            self.strategies = strategy_performance.get_best_strategies()
+            logger.info(f"Auto-selected strategies: {self.strategies}")
         self.trading_mode = config.get('mode', 'manual')
         self.min_confidence = float(config.get('min_confidence', 60))
         self.trade_amount = float(config.get('amount', 10))
@@ -407,8 +426,13 @@ class LiveTradingService:
             self.status.winning_trades += 1
         elif result == 'loss':
             self.status.losing_trades += 1
-            # Learn from loss
             self._learn_from_loss(trade)
+        # Record outcome for strategy performance ranking
+        try:
+            if trade.strategy_used:
+                strategy_performance.record_trade(trade.strategy_used, result, trade.confidence)
+        except Exception:
+            pass
         
         self.status.total_pnl += pnl
         
@@ -566,14 +590,19 @@ class LiveTradingService:
                             win_val = win_val[0] if win_val else 0
                         if isinstance(win_val, (int, float)):
                             pnl = float(win_val)
-                            # Si devuelve 0 en loss, forzamos pérdida de inversión
-                            if pnl <= 0:
-                                result = 'loss'
-                                pnl = -float(trade_obj.amount)
-                            else:
+                            if pnl > 0:
                                 result = 'win'
-                            checked_with_broker = True
-                            logger.info(f"Resultado verificado con IQ Option: {result} PnL: {pnl}")
+                                checked_with_broker = True
+                                logger.info(f"IQ Option WIN: {trade_id} PnL=+{pnl}")
+                            elif pnl < 0:
+                                result = 'loss'
+                                checked_with_broker = True
+                                logger.info(f"IQ Option LOSS: {trade_id} PnL={pnl}")
+                            else:
+                                # pnl == 0: still pending or breakeven - keep in queue
+                                logger.info(f"IQ Option: trade {trade_id} still pending (pnl=0)")
+                                self.pending_settlements.append(p)
+                                continue
                     except Exception as e:
                         logger.warning(f"No se pudo verificar resultado con IQ Option para {trade_id}: {e}")
 
@@ -821,18 +850,15 @@ class LiveTradingService:
                     logger.warning("No se pudo conectar a IQ Option para actualizar balance")
             else:
                 # Try to get from MT5 if IQ not connected
-                mt5 = trading_service.get_mt5()
-                if mt5:
-                    account_info = mt5.account_info()
-                    if account_info:
-                        self.status.balance = account_info.balance
-                        logger.info(f"MT5 Balance updated: ${account_info.balance}")
+                mt5_data = trading_service.get_mt5()
+                if mt5_data and isinstance(mt5_data, dict):
+                    self.status.balance = float(mt5_data.get('balance', 0) or 0)
+                    logger.info(f"MT5 Balance updated from session dict: ${self.status.balance}")
         except Exception as e:
             logger.warning(f"Could not update balance: {e}")
     
     def _trading_loop(self) -> None:
         """Background trading loop that scans all symbols and executes trades."""
-        import random
         
         logger.info(f"Trading loop started - Mode: {self.trading_mode}, Symbols: {self.symbols}")
         
@@ -918,7 +944,6 @@ class LiveTradingService:
     
     def _analyze_symbol(self, symbol: str) -> Optional[Dict]:
         """Analyze a single symbol and return signal."""
-        import random
         
         try:
             # Try to get real data first
@@ -931,16 +956,70 @@ class LiveTradingService:
             
             # Generate analysis (using real data if available, simulated otherwise)
             if df is not None and not df.empty:
-                # Use real strategy analysis
-                from services.strategies import get_strategy
-                strategy = get_strategy(self.strategies[0] if self.strategies else 'ema_rsi')
-                signal = strategy.analyze(df.to_dict('records'))
-                
+                # Multi-strategy confluence: run ALL configured strategies
+                from services.strategies import get_strategy, AVAILABLE_STRATEGIES
+                candles_list = df.to_dict('records')
+                strategy_names = self.strategies if self.strategies else ['ema_rsi']
+
+                call_votes = 0
+                put_votes = 0
+                total_confidence_call = 0.0
+                total_confidence_put = 0.0
+                all_indicators = {}
+                all_reasons = []
+                strategies_fired = []
+
+                for strat_name in strategy_names:
+                    try:
+                        strat = get_strategy(strat_name)
+                        sig = strat.analyze(candles_list)
+                        if sig.signal.value == 'call':
+                            call_votes += 1
+                            total_confidence_call += sig.confidence
+                            strategies_fired.append(strat_name)
+                        elif sig.signal.value == 'put':
+                            put_votes += 1
+                            total_confidence_put += sig.confidence
+                            strategies_fired.append(strat_name)
+                        all_indicators.update(sig.indicators)
+                        for r in sig.reasons:
+                            all_reasons.append(r.to_dict() if hasattr(r, 'to_dict') else r)
+                    except Exception as se:
+                        logger.warning(f"Strategy {strat_name} failed for {symbol}: {se}")
+
+                total_votes = call_votes + put_votes
+                if total_votes == 0:
+                    final_signal = 'none'
+                    final_confidence = 0.0
+                elif call_votes > put_votes:
+                    final_signal = 'call'
+                    # Confluence bonus: more strategies agreeing = higher confidence
+                    base_conf = total_confidence_call / call_votes
+                    confluence_bonus = min(15.0, (call_votes - 1) * 5.0)
+                    final_confidence = min(95.0, base_conf + confluence_bonus)
+                elif put_votes > call_votes:
+                    final_signal = 'put'
+                    base_conf = total_confidence_put / put_votes
+                    confluence_bonus = min(15.0, (put_votes - 1) * 5.0)
+                    final_confidence = min(95.0, base_conf + confluence_bonus)
+                else:
+                    # Tie: no signal
+                    final_signal = 'none'
+                    final_confidence = 0.0
+
+                dominant_strategy = strategies_fired[0] if strategies_fired else (strategy_names[0] if strategy_names else 'ema_rsi')
                 result = {
                     'symbol': symbol,
                     'timeframe': '5m',
-                    'strategy': self.strategies[0] if self.strategies else 'ema_rsi',
-                    'signal': signal.to_dict(),
+                    'strategy': dominant_strategy,
+                    'strategies_used': strategy_names,
+                    'confluence': {'call_votes': call_votes, 'put_votes': put_votes, 'total': len(strategy_names)},
+                    'signal': {
+                        'signal': final_signal,
+                        'confidence': round(final_confidence, 1),
+                        'indicators': all_indicators,
+                        'reasons': all_reasons,
+                    },
                     'timestamp': datetime.now().isoformat(),
                     'source': 'real'
                 }
@@ -1047,7 +1126,6 @@ class LiveTradingService:
         """
         Execute a trade on the real broker (if connected) and record it internally.
         """
-        import random
         
         direction = str(direction).lower().strip()
         if direction not in ['call', 'put']:
@@ -1094,36 +1172,50 @@ class LiveTradingService:
         executed_on_broker = False
         broker_error = None
         
+        account_type_up = str(account_type).upper()
+        is_real_account = account_type_up == 'REAL'
+
         if platform == 'iqoption':
             iq = trading_service.get_iq_option()
-            if iq:
+            broker_connected = False
+            try:
+                broker_connected = bool(iq and iq.check_connect())
+            except Exception:
+                broker_connected = False
+
+            if broker_connected:
+                # Real or demo with live broker
                 try:
-                    if not iq.check_connect():
-                        iq.connect()
-                    if iq.check_connect():
-                        if hasattr(iq, 'is_asset_open') and not iq.is_asset_open(symbol):
-                            broker_error = f"Market for {symbol} is CLOSED"
+                    if hasattr(iq, 'is_asset_open'):
+                        try:
+                            if not iq.is_asset_open(symbol):
+                                broker_error = f"Market for {symbol} is CLOSED"
+                        except Exception:
+                            pass
+                    if not broker_error:
+                        check, order_id = iq.buy(amount, symbol, direction, expiration)
+                        if check:
+                            trade_id_broker = order_id
+                            executed_on_broker = True
+                            logger.info(f"✅ Real trade executed on IQ Option: {symbol} {direction} ID:{order_id}")
+                            self._update_balance()
                         else:
-                            check, order_id = iq.buy(amount, symbol, direction, expiration)
-                            if check:
-                                trade_id_broker = order_id
-                                executed_on_broker = True
-                                logger.info(f"✅ Real trade executed on IQ Option: {symbol} {direction} ID:{order_id}")
-                                self._update_balance()
-                            else:
-                                broker_error = "Broker rejected trade (Market closed or limit reached)"
-                    else:
-                        broker_error = "Could not connect to IQ Option"
+                            broker_error = "Broker rejected trade (Market closed or limit reached)"
                 except Exception as e:
                     broker_error = str(e)
                     logger.error(f"IQ Option execution error: {e}")
+            elif not is_real_account:
+                # DEMO/PRACTICE mode without live broker → simulate locally
+                trade_id_broker = f"SIM_{int(time.time() * 1000)}"
+                executed_on_broker = True
+                logger.info(f"📊 DEMO trade simulated locally: {symbol} {direction} (no broker connection)")
             else:
-                broker_error = "IQ Option service not initialized"
+                broker_error = "IQ Option not connected. Connect before executing REAL trades."
         elif platform == 'mt5':
             broker_error = "MT5 execution not yet fully implemented via this unified method"
         else:
             broker_error = f"Unknown platform: {platform}"
-        
+
         if not executed_on_broker:
             self.status.errors.append(f"Trade failed: {broker_error}")
             return {

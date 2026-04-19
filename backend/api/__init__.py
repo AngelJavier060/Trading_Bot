@@ -17,10 +17,11 @@ def create_app():
     app = Flask(__name__)
     app.config["SECRET_KEY"] = SECRET_KEY
     
-    # Habilitar CORS con configuración completa
+    # Habilitar CORS — permite cualquier puerto de localhost (dev) y orígenes de producción
+    import re
     CORS(app, resources={
         r"/api/*": {
-            "origins": ["http://localhost:3000", "http://127.0.0.1:3000", "http://127.0.0.1:62824"],
+            "origins": re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"),
             "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
             "supports_credentials": True

@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useEffect, useRef, useState, useCallback, useId } from 'react';
 
 declare global {

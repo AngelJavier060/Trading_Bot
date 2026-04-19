@@ -76,6 +76,24 @@ def get_loss_analysis():
     return live_trading_controller.get_loss_analysis()
 
 
+@live_trading_bp.route('/strategy-ranking', methods=['GET'])
+def get_strategy_ranking():
+    """Get strategy performance ranking and auto-selected best strategies."""
+    return live_trading_controller.get_strategy_ranking()
+
+
+@live_trading_bp.route('/auto-train', methods=['POST'])
+def auto_train_now():
+    """Trigger immediate ML retraining."""
+    return live_trading_controller.auto_train_now()
+
+
+@live_trading_bp.route('/trainer-status', methods=['GET'])
+def get_trainer_status():
+    """Get auto-trainer and ML model status."""
+    return live_trading_controller.get_trainer_status()
+
+
 @live_trading_bp.route('/test', methods=['GET'])
 def test():
     """Test route."""

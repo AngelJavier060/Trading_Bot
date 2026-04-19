@@ -1,7 +1,5 @@
-'use client';
-
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/router';
 import api from '../../../services/api';
 import Signals from './Signals';
 

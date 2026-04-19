@@ -35,56 +35,84 @@ class TradingController:
 
     @property
     def connected(self) -> bool:
-        return self.iq is not None and self.iq.check_connect()
+        try:
+            iq = self.iq
+            return iq is not None and bool(iq.check_connect())
+        except Exception:
+            return False
 
     @validate_schema(ConnectSchema)
     def connect(self, validated_data: ConnectSchema):
         try:
-            logging.info(f"Intento de conexión recibido para plataforma: {validated_data.platform}")
             credentials = validated_data.credentials
-            account_type = validated_data.account_type
-            
+            account_type = validated_data.account_type or 'PRACTICE'
+            demo_only = request.get_json(silent=True, force=True) or {}
+            demo_only = bool(demo_only.get('demo_only', False))
+
+            # ── MODO DEMO SIN BROKER ──────────────────────────────────────
+            if demo_only:
+                self.current_account_type = 'PRACTICE'
+                self.email = credentials.email or 'demo@local'
+                return jsonify({
+                    'status': 'connected',
+                    'message': 'Modo Demo local activo (sin broker)',
+                    'accountInfo': {
+                        'account_type': 'PRACTICE',
+                        'balance': 10000.0,
+                        'currency': 'USD',
+                        'email': self.email,
+                        'mode': 'demo_local'
+                    }
+                })
+
+            # ── CONEXIÓN REAL A IQ OPTION ─────────────────────────────────
             email = credentials.email
-            # No loguear la contraseña por seguridad
-            
             if not email or not credentials.password:
-                logging.error("Credenciales incompletas recibidas")
-                return jsonify({'error': 'Credenciales incompletas'}), 400
+                return jsonify({'status': 'error', 'message': 'Email y contraseña son obligatorios'}), 400
 
-            logging.info(f"Intentando conectar a IQ Option con email: {email}")
-            
-            # Crear nueva instancia de IQ_Option
+            logging.info(f"Conectando a IQ Option: {email}")
             iq_instance = IQ_Option(email, credentials.password)
-            
-            # Intentar conexión
-            status, reason = iq_instance.connect()
-            
-            logging.info(f"Resultado de conexión IQ Option: status={status}, reason={reason}")
-            
-            if status:
-                # Cambiar a cuenta demo/real según corresponda
-                if account_type == "REAL":
-                    iq_instance.change_balance('REAL')
-                else:
-                    iq_instance.change_balance('PRACTICE')
-                
-                # Guardar en el servicio centralizado
-                trading_service.set_iq_option(iq_instance)
 
-                # Alinear data service con la sesión real (evitar providers paralelos/demo)
+            try:
+                result = iq_instance.connect()
+                # connect() puede devolver (bool, reason) o sólo bool según versión
+                if isinstance(result, tuple):
+                    status, reason = result
+                else:
+                    status = bool(result)
+                    reason = None
+            except Exception as conn_err:
+                logging.error(f"Excepción en iq_instance.connect(): {conn_err}")
+                status = False
+                reason = str(conn_err)
+
+            logging.info(f"IQ Option connect → status={status}, reason={reason}")
+
+            if status:
+                try:
+                    if account_type == 'REAL':
+                        iq_instance.change_balance('REAL')
+                    else:
+                        iq_instance.change_balance('PRACTICE')
+                except Exception:
+                    pass
+
+                trading_service.set_iq_option(iq_instance)
                 try:
                     from services.data import unified_data_service
                     unified_data_service.sync_from_trading_service()
                 except Exception:
                     pass
-                
+
                 self.current_account_type = account_type
                 self.last_check = datetime.now()
                 self.email = email
 
-                # Obtener información de la cuenta
-                balance = iq_instance.get_balance()
-                currency = iq_instance.get_currency()
+                try:
+                    balance = iq_instance.get_balance()
+                    currency = iq_instance.get_currency()
+                except Exception:
+                    balance, currency = 0.0, 'USD'
 
                 return jsonify({
                     'status': 'connected',
@@ -97,17 +125,23 @@ class TradingController:
                     }
                 })
             else:
-                return jsonify({
-                    'status': 'error',
-                    'message': f'Error de conexión: {reason}'
-                }), 401
+                # Proporcionar mensajes de error claros
+                reason_str = str(reason) if reason else ''
+                if not reason_str or reason_str.lower() in ('none', 'false', ''):
+                    msg = ('Credenciales incorrectas. Verifica tu email y contraseña de IQ Option.'
+                           ' Si usas 2FA, desactívalo temporalmente desde la app de IQ Option.')
+                elif 'wrong' in reason_str.lower() or 'invalid' in reason_str.lower():
+                    msg = f'Email o contraseña incorrectos ({reason_str})'
+                elif '2fa' in reason_str.lower() or 'two' in reason_str.lower():
+                    msg = 'Tu cuenta tiene autenticación de dos factores (2FA). Desactívala desde IQ Option antes de conectar.'
+                else:
+                    msg = f'IQ Option rechazó la conexión: {reason_str}'
+                logging.warning(f"IQ Option login failed: {msg}")
+                return jsonify({'status': 'error', 'message': msg}), 401
 
         except Exception as e:
             logging.error(f"Error en la conexión: {str(e)}")
-            return jsonify({
-                'status': 'error',
-                'message': f'Error de conexión: {str(e)}'
-            }), 500
+            return jsonify({'status': 'error', 'message': f'Error inesperado: {str(e)}'}), 500
 
     def check_connection(self):
         try:
@@ -117,22 +151,32 @@ class TradingController:
                     'message': 'No hay conexión activa'
                 })
 
-            balance = self.iq.get_balance()
+            try:
+                balance = self.iq.get_balance()
+            except Exception:
+                balance = 0.0
+
+            try:
+                currency = self.iq.get_currency()
+            except Exception:
+                currency = 'USD'
+
             return jsonify({
                 'status': 'connected',
                 'message': 'Conexión activa',
                 'accountInfo': {
                     'account_type': self.current_account_type,
-                    'balance': balance
+                    'balance': balance,
+                    'currency': currency
                 }
             })
 
         except Exception as e:
             logging.error(f"Error al verificar conexión: {str(e)}")
             return jsonify({
-                'status': 'error',
-                'message': str(e)
-            }), 500
+                'status': 'disconnected',
+                'message': 'Sin conexión'
+            })
 
     def disconnect(self):
         try:

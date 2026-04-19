@@ -13,6 +13,7 @@ from flask import request, jsonify
 from datetime import datetime, timedelta
 
 from services.backtesting import BacktestEngine, BacktestConfig
+from services.backtesting.data_fetcher import fetch_multi_asset, fetch_candles, get_available_symbols
 from services.strategies import AVAILABLE_STRATEGIES, get_strategy
 
 logger = logging.getLogger(__name__)
@@ -410,6 +411,133 @@ class BacktestingController:
                 'message': str(e)
             }), 500
     
+    def get_symbols(self):
+        """Return list of supported symbols for backtesting."""
+        try:
+            return jsonify({'status': 'success', 'symbols': get_available_symbols()})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    def run_auto_backtest(self):
+        """
+        Run a backtest fetching real historical data from Yahoo Finance.
+
+        Expected JSON body:
+        {
+            "strategy_name": "ema_rsi",
+            "assets": ["EURUSD", "GBPUSD"],
+            "timeframe": "5m",
+            "days_back": 30,           // optional, overridden by start_date/end_date
+            "start_date": "2024-01-01",// optional ISO date
+            "end_date":   "2024-03-01",// optional ISO date
+            "initial_capital": 10000,
+            "trade_amount": 100,
+            "trade_amount_type": "fixed",
+            "payout_rate": 0.85,
+            "min_confidence": 60,
+            "max_trades_per_day": 50,
+            "stop_loss_daily": 0.10,
+            "take_profit_daily": 0.20,
+            "use_martingale": false,
+            "expiration_minutes": 5
+        }
+        """
+        try:
+            data = request.get_json() or {}
+
+            strategy_name = data.get('strategy_name', 'ema_rsi')
+            if strategy_name not in AVAILABLE_STRATEGIES:
+                return jsonify({'status': 'error',
+                                'message': f"Estrategia '{strategy_name}' no encontrada. "
+                                           f"Disponibles: {list(AVAILABLE_STRATEGIES.keys())}"}), 400
+
+            assets = data.get('assets') or ['EURUSD']
+            if isinstance(assets, str):
+                assets = [assets]
+            timeframe = data.get('timeframe', '5m')
+            days_back = int(data.get('days_back', 30))
+            expiration_minutes = int(data.get('expiration_minutes', 5))
+
+            # Parse optional date range
+            start_date = end_date = None
+            try:
+                if data.get('start_date'):
+                    start_date = datetime.fromisoformat(data['start_date'])
+                if data.get('end_date'):
+                    end_date = datetime.fromisoformat(data['end_date'])
+            except Exception:
+                pass
+
+            # Fetch real candle data
+            logger.info(f"Auto-backtest: fetching data for {assets} tf={timeframe} days={days_back}")
+            candles_data = fetch_multi_asset(
+                symbols=assets,
+                timeframe=timeframe,
+                days_back=days_back,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+            if not candles_data:
+                return jsonify({
+                    'status': 'error',
+                    'message': (
+                        'No se pudieron obtener datos históricos. '
+                        'Verifica el símbolo y el rango de fechas. '
+                        'Para timeframes de 1m/5m/15m el máximo es ~58 días.'
+                    )
+                }), 400
+
+            total_candles = sum(len(v) for v in candles_data.values())
+            logger.info(f"Fetched {total_candles} total candles across {len(candles_data)} assets")
+
+            # Build config
+            config = BacktestConfig(
+                strategy_name=strategy_name,
+                strategy_params=data.get('strategy_params', {}),
+                initial_capital=float(data.get('initial_capital', 10000)),
+                trade_amount=float(data.get('trade_amount', 100)),
+                trade_amount_type=data.get('trade_amount_type', 'fixed'),
+                payout_rate=float(data.get('payout_rate', 0.85)),
+                max_trades_per_day=int(data.get('max_trades_per_day', 50)),
+                stop_loss_daily=float(data.get('stop_loss_daily', 0.10)),
+                take_profit_daily=float(data.get('take_profit_daily', 0.20)),
+                timeframe=timeframe,
+                assets=list(candles_data.keys()),
+                use_martingale=bool(data.get('use_martingale', False)),
+                martingale_multiplier=float(data.get('martingale_multiplier', 2.0)),
+                martingale_max_steps=int(data.get('martingale_max_steps', 3)),
+                min_confidence=float(data.get('min_confidence', 60)),
+            )
+
+            # Inject expiration info into config for engine
+            config.expiration_minutes = expiration_minutes
+
+            engine = BacktestEngine(config)
+            result = engine.run(candles_data)
+
+            result_id = f"auto_{int(time.time())}_{strategy_name}"
+            result_dict = result.to_dict()
+            result_dict['data_info'] = {
+                'source': 'yfinance',
+                'assets': list(candles_data.keys()),
+                'candles_per_asset': {k: len(v) for k, v in candles_data.items()},
+                'timeframe': timeframe,
+                'days_back': days_back,
+            }
+            self.results_cache[result_id] = result_dict
+            self._save_result(result_id, result_dict)
+
+            return jsonify({
+                'status': 'success',
+                'result_id': result_id,
+                'result': result_dict,
+            })
+
+        except Exception as e:
+            logger.error(f"Error in auto_backtest: {e}", exc_info=True)
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
     def _generate_sample_candles(self, count: int) -> List[Dict]:
         """Generate sample OHLCV candles for testing."""
         import random

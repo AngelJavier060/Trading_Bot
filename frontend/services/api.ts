@@ -169,24 +169,22 @@ const api = {
     return await response.json();
   },
 
-  connectTradingPlatform: async (platform: string, credentials: Record<string, string>, accountType: string) => {
+  connectTradingPlatform: async (platform: string, credentials: Record<string, string>, accountType: string, demoOnly = false) => {
     try {
       const response = await fetch(`${BASE_URL}/api/trading/connect`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          platform, 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform,
           credentials,
-          platform_type: 'iqoption',
-          account_type: accountType
+          account_type: accountType,
+          demo_only: demoOnly,
         }),
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Error al conectar con la plataforma');
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || `Error ${response.status} al conectar`);
       }
 
       return await response.json();
@@ -455,6 +453,26 @@ const api = {
     if (!response.ok || data.status === 'error') {
       throw new Error(data.message || 'Error al comparar estrategias');
     }
+    return data;
+  },
+
+  runAutoBacktest: async (params: Record<string, any>) => {
+    const response = await fetch(`${BASE_URL}/api/backtesting/auto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al ejecutar backtesting automático');
+    }
+    return data;
+  },
+
+  getBacktestSymbols: async () => {
+    const response = await fetch(`${BASE_URL}/api/backtesting/symbols`);
+    const data = await response.json();
+    if (!response.ok) throw new Error('Error al obtener símbolos');
     return data;
   },
 

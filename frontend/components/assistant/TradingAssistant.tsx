@@ -25,7 +25,7 @@ interface TradingAssistantProps {
   isTrading?: boolean;
 }
 
-const API_BASE = 'http://127.0.0.1:5000/api/assistant';
+const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000'}/api/assistant`;
 
 const TradingAssistant: React.FC<TradingAssistantProps> = ({
   onTradeAnalyzed,

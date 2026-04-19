@@ -14,6 +14,8 @@ from services.trading.live_trading_service import live_trading_service
 from services.strategies import get_strategy, AVAILABLE_STRATEGIES
 from services.ml.ml_service import ml_service
 from services.data import unified_data_service
+from services.strategy_performance import strategy_performance
+from services.auto_trainer import auto_trainer
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ class LiveTradingController:
             config = {
                 'mode': data.get('mode', 'manual'),
                 'symbols': data.get('symbols', ['EURUSD', 'GBPUSD', 'USDJPY']),
-                'strategies': data.get('strategies', ['ema_rsi']),
+                'strategies': data.get('strategies', []),  # empty → auto-select best
                 'amount': data.get('amount', 10),
                 'min_confidence': data.get('min_confidence', 60),
                 'expiration': data.get('expiration', 5),
@@ -296,16 +298,19 @@ class LiveTradingController:
             if expiration < 1:
                 expiration = 1
 
-            # Seguridad: para IQ Option requerimos conexión real antes de enviar orden
-            if platform == 'iqoption':
-                iq = trading_service.get_iq_option()
-                if not iq or not iq.check_connect():
-                    return jsonify({'status': 'error', 'message': 'No conectado a IQ Option. Conecta la plataforma antes de ejecutar.'}), 401
+            # Seguridad: solo exigir conexión real en cuenta REAL
+            if platform == 'iqoption' and account_type == 'REAL':
                 try:
-                    if hasattr(iq, 'is_asset_open') and not iq.is_asset_open(symbol):
-                        return jsonify({'status': 'error', 'message': f'Mercado cerrado para {symbol}'}), 400
-                except Exception:
-                    pass
+                    iq = trading_service.get_iq_option()
+                    if not iq or not iq.check_connect():
+                        return jsonify({'status': 'error', 'message': 'No conectado a IQ Option. Conecta la plataforma antes de ejecutar en cuenta REAL.'}), 401
+                    try:
+                        if hasattr(iq, 'is_asset_open') and not iq.is_asset_open(symbol):
+                            return jsonify({'status': 'error', 'message': f'Mercado cerrado para {symbol}'}), 400
+                    except Exception:
+                        pass
+                except Exception as conn_err:
+                    return jsonify({'status': 'error', 'message': f'Error al verificar conexión IQ Option: {str(conn_err)}'}), 503
             
             # Ensure reasons is a list of strings
             if isinstance(reasons, list):
@@ -527,6 +532,40 @@ class LiveTradingController:
             
         except Exception as e:
             logger.error(f"Error getting loss analysis: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+    def get_strategy_ranking(self):
+        """Return strategy performance ranking."""
+        try:
+            ranking = strategy_performance.get_ranking()
+            best = strategy_performance.get_best_strategies()
+            return jsonify({
+                'status': 'success',
+                'ranking': ranking,
+                'best_strategies': best,
+                'auto_trainer': auto_trainer.get_status()
+            })
+        except Exception as e:
+            logger.error(f"Error getting strategy ranking: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    def auto_train_now(self):
+        """Trigger immediate ML model retraining."""
+        try:
+            data = request.get_json() or {}
+            symbol = data.get('symbol', 'EURUSD')
+            result = auto_trainer.train_now(symbol)
+            return jsonify({'status': result.get('status'), 'result': result})
+        except Exception as e:
+            logger.error(f"Error triggering auto-train: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    def get_trainer_status(self):
+        """Return auto-trainer and ML model status."""
+        try:
+            return jsonify({'status': 'success', 'trainer': auto_trainer.get_status()})
+        except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
 

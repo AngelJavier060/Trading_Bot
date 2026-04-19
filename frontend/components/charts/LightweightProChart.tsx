@@ -1,8 +1,7 @@
-"use client";
-
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createChart, ColorType, LineStyle } from 'lightweight-charts';
 import type { ISeriesApi, CandlestickData, Time } from 'lightweight-charts';
+import { ZoomIn, ZoomOut, Maximize2, Minimize2, SkipForward, Maximize } from 'lucide-react';
 
 type UTCTime = number; // seconds
 
@@ -184,6 +183,7 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rsiContainerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'>>();
   const emaSeriesRef = useRef<ISeriesApi<'Line'>>();
   const rsiSeriesRef = useRef<ISeriesApi<'Line'>>();
@@ -199,6 +199,55 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
   const macdSignalRef = useRef<ISeriesApi<'Line'>>();
   const macdHistRef = useRef<ISeriesApi<'Histogram'>>();
   const [data, setData] = useState<CandlestickData<Time>[]>([]);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const effectiveHeight = isExpanded ? Math.max(height * 2.5, 900) : height;
+  const mainH = Math.floor(effectiveHeight * 0.72);
+  const subH = Math.max(100, Math.floor(effectiveHeight * 0.28));
+
+  // Zoom controls
+  const handleZoomIn = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    const center = (range.from + range.to) / 2;
+    const half = (range.to - range.from) / 2 * 0.65;
+    chart.timeScale().setVisibleLogicalRange({ from: center - half, to: center + half });
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    const center = (range.from + range.to) / 2;
+    const half = (range.to - range.from) / 2 * 1.5;
+    chart.timeScale().setVisibleLogicalRange({ from: center - half, to: center + half });
+  }, []);
+
+  const handleFitContent = useCallback(() => {
+    chartRef.current?.timeScale().fitContent();
+    rsiChartRef.current?.timeScale().fitContent();
+  }, []);
+
+  const handleGoToLatest = useCallback(() => {
+    chartRef.current?.timeScale().scrollToRealTime();
+    rsiChartRef.current?.timeScale().scrollToRealTime();
+  }, []);
+
+  const handleToggleExpand = useCallback(() => {
+    setIsExpanded(prev => !prev);
+  }, []);
+
+  // Keyboard shortcuts when wrapper is focused
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === '+' || (e.key === '=' && e.shiftKey)) { e.preventDefault(); handleZoomIn(); }
+    if (e.key === '-') { e.preventDefault(); handleZoomOut(); }
+    if (e.key === '0' || e.key === 'Home') { e.preventDefault(); handleFitContent(); }
+    if (e.key === 'End') { e.preventDefault(); handleGoToLatest(); }
+    if (e.key === 'f' || e.key === 'F') { e.preventDefault(); handleToggleExpand(); }
+  }, [handleZoomIn, handleZoomOut, handleFitContent, handleGoToLatest, handleToggleExpand]);
 
   // Fetch data when symbol/timeframe changes
   useEffect(() => {
@@ -261,9 +310,11 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
       layout: { background: { type: ColorType.Solid, color: '#0f172a' }, textColor: '#cbd5e1' },
       grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
       rightPriceScale: { borderColor: '#334155' },
-      timeScale: { borderColor: '#334155' },
+      timeScale: { borderColor: '#334155', rightOffset: 5 },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true } },
       width: containerRef.current.clientWidth,
-      height: Math.floor(height * 0.72),
+      height: mainH,
     });
     chartRef.current = chart;
     const candleSeries = chart.addCandlestickSeries({
@@ -273,7 +324,6 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
     if (showEMA) {
       emaSeriesRef.current = chart.addLineSeries({ color: emaColor, lineWidth: emaLineWidth as any });
     }
-    // Bollinger bands series on main chart
     bbUpperSeriesRef.current = chart.addLineSeries({ color: bbUpperColor, lineWidth: 1 as any });
     bbLowerSeriesRef.current = chart.addLineSeries({ color: bbLowerColor, lineWidth: 1 as any });
     bbBasisSeriesRef.current = chart.addLineSeries({ color: bbBasisColor, lineWidth: 1 as any, lineStyle: LineStyle.Dotted });
@@ -284,21 +334,27 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
         layout: { background: { type: ColorType.Solid, color: '#0b1220' }, textColor: '#cbd5e1' },
         grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
         rightPriceScale: { borderColor: '#334155' },
-        timeScale: { borderColor: '#334155' },
+        timeScale: { borderColor: '#334155', rightOffset: 5 },
+        handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+        handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true } },
         width: rsiContainer.clientWidth,
-        height: Math.max(100, Math.floor(height * 0.28)),
+        height: subH,
       });
       rsiChartRef.current = rsiChart;
-      // RSI series (created always, can be empty)
       rsiSeriesRef.current = rsiChart.addLineSeries({ color: rsiColor, lineWidth: rsiLineWidth as any });
       rsiSeriesRef.current.createPriceLine({ price: 70, color: '#ef4444', lineStyle: LineStyle.Dotted, axisLabelVisible: true });
       rsiSeriesRef.current.createPriceLine({ price: 50, color: '#64748b', lineStyle: LineStyle.Dotted, axisLabelVisible: true });
       rsiSeriesRef.current.createPriceLine({ price: 30, color: '#22c55e', lineStyle: LineStyle.Dotted, axisLabelVisible: true });
-      // MACD series on same pane
       macdLineRef.current = rsiChart.addLineSeries({ color: macdLineColor, lineWidth: 2 as any });
       macdSignalRef.current = rsiChart.addLineSeries({ color: macdSignalColor, lineWidth: 2 as any });
       macdHistRef.current = (rsiChart as any).addHistogramSeries({ base: 0 });
-      const ts = chart.timeScale();
+      // Sync time scales
+      chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (range) rsiChart.timeScale().setVisibleLogicalRange(range);
+      });
+      rsiChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (range) chart.timeScale().setVisibleLogicalRange(range);
+      });
     }
 
     const onResize = () => {
@@ -321,6 +377,16 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
       rsiSeriesRef.current = undefined as any;
     };
   }, []);
+
+  // Resize charts when expand state or height changes
+  useEffect(() => {
+    if (chartRef.current) {
+      chartRef.current.applyOptions({ height: mainH });
+    }
+    if (rsiChartRef.current) {
+      rsiChartRef.current.applyOptions({ height: subH });
+    }
+  }, [mainH, subH]);
 
   // Set data to series
   useEffect(() => {
@@ -532,10 +598,50 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
     }
   }, [showRSIDivergence, showRSI, rsiData, data, trades, rsiDivLookback]);
 
+  const btnClass = 'p-1 rounded hover:bg-slate-600 text-slate-400 hover:text-white transition-colors';
+  const divider = <div className="w-px h-4 bg-slate-600 mx-0.5" />;
+
   return (
-    <div className="w-full">
-      <div ref={containerRef} style={{ height: Math.floor(height * 0.72) }} />
-      <div ref={rsiContainerRef} style={{ height: Math.max(100, Math.floor(height * 0.28)) }} />
+    <div
+      ref={wrapperRef}
+      className="w-full relative outline-none"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      style={{ transition: 'all 0.3s ease' }}
+    >
+      {/* TradingView-style Zoom Toolbar */}
+      <div className="absolute top-2 right-2 z-20 flex items-center gap-0.5 bg-slate-900/90 backdrop-blur-sm rounded-lg px-1.5 py-1 border border-slate-700 shadow-lg">
+        <button onClick={handleZoomIn} className={btnClass} title="Zoom In (+)">
+          <ZoomIn className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={handleZoomOut} className={btnClass} title="Zoom Out (-)">
+          <ZoomOut className="w-3.5 h-3.5" />
+        </button>
+        {divider}
+        <button onClick={handleFitContent} className={btnClass} title="Ajustar todo (0)">
+          <Maximize2 className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={handleGoToLatest} className={btnClass} title="Ir al presente (End)">
+          <SkipForward className="w-3.5 h-3.5" />
+        </button>
+        {divider}
+        <button
+          onClick={handleToggleExpand}
+          className={`${btnClass} ${isExpanded ? 'text-blue-400 hover:text-blue-300' : ''}`}
+          title={isExpanded ? 'Reducir gráfico (F)' : 'Ampliar gráfico (F)'}
+        >
+          {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+
+      {/* Chart panes */}
+      <div ref={containerRef} style={{ height: mainH }} />
+      <div ref={rsiContainerRef} style={{ height: subH }} />
+
+      {/* Keyboard shortcut hint */}
+      <div className="absolute bottom-1 left-2 text-[9px] text-slate-600 select-none pointer-events-none">
+        + zoom in &nbsp;·&nbsp; - zoom out &nbsp;·&nbsp; 0 fit &nbsp;·&nbsp; F ampliar
+      </div>
     </div>
   );
 };

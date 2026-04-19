@@ -58,6 +58,18 @@ def analyze_signal():
     return backtesting_controller.analyze_signal()
 
 
+@backtesting_bp.route('/auto', methods=['POST'])
+def run_auto_backtest():
+    """Run a backtest with real data from Yahoo Finance."""
+    return backtesting_controller.run_auto_backtest()
+
+
+@backtesting_bp.route('/symbols', methods=['GET'])
+def get_symbols():
+    """Return list of supported trading symbols."""
+    return backtesting_controller.get_symbols()
+
+
 @backtesting_bp.route('/test', methods=['GET'])
 def test():
     """Test route."""

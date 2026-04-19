@@ -33,7 +33,6 @@ class MT5Controller:
     @validate_schema(ConnectSchema)
     def connect(self, validated_data: ConnectSchema):
         try:
-            # Check if MT5 is available
             if not MT5_AVAILABLE or mt5 is None:
                 return jsonify({
                     'status': 'error',
@@ -41,7 +40,6 @@ class MT5Controller:
                 }), 500
             
             credentials = validated_data.credentials
-            
             login = credentials.login
             password = credentials.password
             is_demo = validated_data.is_demo
@@ -49,7 +47,6 @@ class MT5Controller:
             if login is None or not password:
                 return jsonify({'error': 'Credenciales incompletas (login y password requeridos)'}), 400
 
-            # Use custom server from request, or fallback to default Admiral servers
             if credentials.server:
                 server = credentials.server
             else:
@@ -57,11 +54,9 @@ class MT5Controller:
             
             logging.info(f"MT5 connecting to server: {server} with login: {login}")
             
-            # Inicializar MT5 (con fallback a rutas comunes de terminal)
             initialized = mt5.initialize()
             attempted_paths = []
             
-            # Try custom terminal path if provided
             if not initialized and credentials.terminal_path and os.path.exists(credentials.terminal_path):
                 attempted_paths.append(credentials.terminal_path)
                 try:
@@ -71,7 +66,6 @@ class MT5Controller:
                 except Exception:
                     pass
             
-            # Try common paths if still not initialized
             if not initialized:
                 common_paths = [
                     r"C:\\Program Files\\MetaTrader 5\\terminal64.exe",
@@ -100,12 +94,7 @@ class MT5Controller:
                     'attempted_paths': attempted_paths
                 }), 500
 
-            # Intentar login con Admiral Markets
-            authorized = mt5.login(
-                login=login,
-                password=password,
-                server=server
-            )
+            authorized = mt5.login(login=login, password=password, server=server)
             
             if not authorized:
                 mt5.shutdown()
@@ -114,7 +103,6 @@ class MT5Controller:
                     'message': f'Error de autorización: {mt5.last_error()}. Verifica tus credenciales y el servidor ({server}).'
                 }), 401
 
-            # Obtener información de la cuenta
             account_info = mt5.account_info()
             if account_info is None:
                 mt5.shutdown()
@@ -135,7 +123,6 @@ class MT5Controller:
                 'account_type': 'DEMO' if is_demo else 'REAL'
             }
 
-            # Guardar en el servicio centralizado
             trading_service.set_mt5(self.current_account)
 
             return jsonify({
@@ -153,48 +140,106 @@ class MT5Controller:
 
     def disconnect(self):
         try:
+            if MT5_AVAILABLE and mt5 is not None:
+                try:
+                    mt5.shutdown()
+                except Exception:
+                    pass
             trading_service.disconnect_all()
             self.current_account = None
-            return jsonify({
-                'status': 'success',
-                'message': 'Desconexión exitosa'
-            })
+            return jsonify({'status': 'success', 'message': 'Desconexión exitosa'})
         except Exception as e:
             logging.error(f"Error al desconectar: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    def get_status(self):
+        """Return MT5 connection status with live balance refresh."""
+        try:
+            session = trading_service.get_mt5()
+            if not session:
+                return jsonify({'status': 'disconnected', 'connected': False})
+
+            if MT5_AVAILABLE and mt5 is not None:
+                try:
+                    info = mt5.account_info()
+                    if info is not None:
+                        self.current_account = {
+                            'login': info.login,
+                            'server': info.server,
+                            'balance': info.balance,
+                            'equity': info.equity,
+                            'margin': info.margin,
+                            'free_margin': info.margin_free,
+                            'leverage': info.leverage,
+                            'currency': info.currency,
+                            'account_type': session.get('account_type', 'DEMO'),
+                        }
+                        trading_service.set_mt5(self.current_account)
+                        session = self.current_account
+                except Exception as e:
+                    logging.warning(f"Could not refresh MT5 live data: {e}")
+
             return jsonify({
-                'status': 'error',
-                'message': str(e)
-            }), 500
+                'status': 'connected',
+                'connected': True,
+                'platform': 'mt5',
+                'accountInfo': session
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    def get_account_info(self):
+        """Return live account info from MT5 terminal."""
+        return self.get_status()
+
+    def get_open_trades(self):
+        """Return currently open positions with real-time P&L."""
+        try:
+            if not self.connected:
+                return jsonify({'status': 'error', 'message': 'No hay conexión activa'}), 400
+            if not MT5_AVAILABLE or mt5 is None:
+                return jsonify({'status': 'error', 'message': 'MT5 no disponible'}), 500
+
+            positions = mt5.positions_get()
+            if positions is None:
+                return jsonify({'status': 'success', 'positions': [], 'total_pnl': 0.0})
+
+            result = []
+            for p in positions:
+                result.append({
+                    'ticket': p.ticket,
+                    'symbol': p.symbol,
+                    'type': 'buy' if p.type == 0 else 'sell',
+                    'volume': p.volume,
+                    'open_price': p.price_open,
+                    'current_price': p.price_current,
+                    'profit': p.profit,
+                    'swap': p.swap,
+                    'comment': p.comment,
+                    'open_time': str(p.time),
+                })
+            total_pnl = sum(p['profit'] for p in result)
+            return jsonify({'status': 'success', 'positions': result, 'total_pnl': total_pnl})
+        except Exception as e:
+            logging.error(f"Error al obtener posiciones MT5: {str(e)}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
 
     def get_symbols(self):
         try:
             if not self.connected:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'No hay conexión activa'
-                }), 400
+                return jsonify({'status': 'error', 'message': 'No hay conexión activa'}), 400
 
             symbols = mt5.symbols_get()
             symbols_list = [symbol.name for symbol in symbols]
-            
-            return jsonify({
-                'status': 'success',
-                'symbols': symbols_list
-            })
+            return jsonify({'status': 'success', 'symbols': symbols_list})
         except Exception as e:
             logging.error(f"Error al obtener símbolos: {str(e)}")
-            return jsonify({
-                'status': 'error',
-                'message': str(e)
-            }), 500
+            return jsonify({'status': 'error', 'message': str(e)}), 500
 
     def get_historical_data(self):
         try:
             if not self.connected:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'No hay conexión activa'
-                }), 400
+                return jsonify({'status': 'error', 'message': 'No hay conexión activa'}), 400
 
             data = request.args
             symbol = data.get('symbol')
@@ -204,7 +249,6 @@ class MT5Controller:
             if not symbol:
                 return jsonify({'error': 'Símbolo es requerido'}), 400
 
-            # Mapeo de timeframes
             timeframe_map = {
                 '1m': mt5.TIMEFRAME_M1,
                 '5m': mt5.TIMEFRAME_M5,
@@ -224,18 +268,10 @@ class MT5Controller:
                     'message': f'Error al obtener datos: {mt5.last_error()}'
                 }), 500
 
-            # Convertir a DataFrame
             df = pd.DataFrame(rates)
             df['time'] = pd.to_datetime(df['time'], unit='s')
-            
-            return jsonify({
-                'status': 'success',
-                'data': df.to_dict('records')
-            })
+            return jsonify({'status': 'success', 'data': df.to_dict('records')})
 
         except Exception as e:
             logging.error(f"Error al obtener datos históricos: {str(e)}")
-            return jsonify({
-                'status': 'error',
-                'message': str(e)
-            }), 500
+            return jsonify({'status': 'error', 'message': str(e)}), 500

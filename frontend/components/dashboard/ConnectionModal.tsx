@@ -1,7 +1,5 @@
-'use client';
-
 import React, { useState } from 'react';
-import { X, Loader2, Eye, EyeOff } from 'lucide-react';
+import { X, Loader2, Eye, EyeOff, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
@@ -20,6 +18,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   
   // IQ Option credentials
   const [iqEmail, setIqEmail] = useState('');
@@ -39,26 +38,48 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
       toast.error('Por favor ingresa email y contraseña');
       return;
     }
-
     setIsLoading(true);
+    setErrorDetail(null);
     try {
       const result = await api.connectTradingPlatform(
         'iqoption',
         { email: iqEmail, password: iqPassword },
         iqAccountType
       );
-      
       if (result.status === 'success' || result.status === 'connected' || result.connected) {
         toast.success('Conexión exitosa con IQ Option');
-        // Use accountInfo from response if available, otherwise fetch it
         const accountInfo = result.accountInfo || await api.getAccountInfo();
         onSuccess(accountInfo);
         onClose();
       } else {
+        setErrorDetail(result.message || 'Error de conexión');
         toast.error(result.message || 'Error de conexión');
       }
     } catch (error: any) {
+      setErrorDetail(error.message || 'Error al conectar');
       toast.error(error.message || 'Error al conectar');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDemoMode = async () => {
+    setIsLoading(true);
+    setErrorDetail(null);
+    try {
+      const result = await api.connectTradingPlatform(
+        'iqoption',
+        { email: 'demo@local', password: 'demo' },
+        'PRACTICE',
+        true
+      );
+      if (result.status === 'connected') {
+        toast.success('Modo Demo activo — operaciones simuladas localmente');
+        onSuccess(result.accountInfo || { account_type: 'PRACTICE', balance: 10000, currency: 'USD' });
+        onClose();
+      }
+    } catch (error: any) {
+      toast.error('Error al activar modo demo');
     } finally {
       setIsLoading(false);
     }
@@ -174,6 +195,18 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
                   </p>
                 )}
               </div>
+
+              {/* Error detail */}
+              {errorDetail && (
+                <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-xs text-red-300">
+                  <strong>Error:</strong> {errorDetail}
+                </div>
+              )}
+
+              {/* Demo mode hint */}
+              <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-3 text-xs text-blue-300">
+                <strong>¿Sin credenciales?</strong> Usa el botón <em>Demo Local</em> para probar el sistema sin conectar a IQ Option.
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -244,28 +277,41 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-700 flex gap-3">
-          <button
-            onClick={onClose}
-            disabled={isLoading}
-            className="flex-1 py-2 px-4 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={platform === 'iqoption' ? handleConnectIQ : handleConnectMT5}
-            disabled={isLoading}
-            className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Conectando...
-              </>
-            ) : (
-              'Conectar'
-            )}
-          </button>
+        <div className="p-4 border-t border-slate-700 space-y-2">
+          {/* Demo local button - only for IQ Option */}
+          {platform === 'iqoption' && (
+            <button
+              onClick={handleDemoMode}
+              disabled={isLoading}
+              className="w-full py-2 px-4 bg-slate-700 hover:bg-emerald-700 border border-emerald-700/50 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-emerald-300"
+            >
+              <FlaskConical className="w-4 h-4" />
+              Demo Local (sin broker)
+            </button>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              disabled={isLoading}
+              className="flex-1 py-2 px-4 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={platform === 'iqoption' ? handleConnectIQ : handleConnectMT5}
+              disabled={isLoading}
+              className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Conectando...
+                </>
+              ) : (
+                'Conectar IQ Option'
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

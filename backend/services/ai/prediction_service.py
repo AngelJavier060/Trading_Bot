@@ -3,20 +3,16 @@ from typing import List, Dict, Optional
 
 
 def _compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
-    """Calcula RSI de forma simple a partir de una serie de precios de cierre."""
+    """Calcula RSI usando el suavizado de Wilder (igual que TradingView/MetaTrader)."""
     delta = series.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-
-    avg_gain = gain.rolling(window=period, min_periods=period).mean()
-    avg_loss = loss.rolling(window=period, min_periods=period).mean()
-
-    # Evitar divisiones por cero
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
     avg_loss = avg_loss.replace(0, 1e-9)
-
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
-    return rsi
+    return rsi.fillna(50)
 
 
 def basic_ema_rsi_decision(

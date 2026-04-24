@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { 
   Activity, Settings, TrendingUp, BarChart3, Bot, Bell, Clock, 
@@ -84,6 +84,17 @@ interface Trade {
   timestamp: string;
   expiration_time?: string; // ISO timestamp when trade expires
   expiration_minutes?: number; // Expiration duration in minutes
+}
+
+/** Unifica resultado para la UI (API puede devolver pending aunque ya haya PnL). */
+function normalizeTradeResult(t: Pick<Trade, 'result' | 'pnl'>): 'win' | 'loss' | 'pending' {
+  const r = (t.result || '').toString().toLowerCase();
+  if (r === 'win') return 'win';
+  if (r === 'loss') return 'loss';
+  if (typeof t.pnl === 'number' && t.pnl !== 0) {
+    return t.pnl > 0 ? 'win' : 'loss';
+  }
+  return 'pending';
 }
 
 // Countdown Timer Component for active trades - client-only to avoid hydration mismatch
@@ -757,6 +768,19 @@ const LiveTradingTab: React.FC<{
   // Pagination helpers
   const totalPages = Math.ceil(dailyTrades.length / TRADES_PER_PAGE);
   const paginatedTrades = dailyTrades.slice((currentPage - 1) * TRADES_PER_PAGE, currentPage * TRADES_PER_PAGE);
+
+  const dailyResultStats = useMemo(() => {
+    let wins = 0;
+    let losses = 0;
+    let pending = 0;
+    for (const t of dailyTrades) {
+      const n = normalizeTradeResult(t);
+      if (n === 'win') wins += 1;
+      else if (n === 'loss') losses += 1;
+      else pending += 1;
+    }
+    return { wins, losses, pending, total: dailyTrades.length };
+  }, [dailyTrades]);
   
   // Reset page when filters change
   useEffect(() => {
@@ -819,13 +843,13 @@ const LiveTradingTab: React.FC<{
   }, [platform]);
 
   const loadCandles = async (sym: string, tf: string, count: number) => {
-    const normalizedSymbol = sym.replace('-OTC', '');
+    // IQ OTC usa símbolos tipo EURUSD-OTC; quitar el sufijo rompe las velas en vivo.
+    const normalizedSymbol =
+      platform === 'iqoption' && marketType === 'otc' ? sym : sym.replace('-OTC', '');
     try {
-      // Use unified endpoint; it auto-connects to demo if no platform connection is active
       const res = await api.getCandles(normalizedSymbol, tf, count);
       return res.data || [];
     } catch (e) {
-      // Fallback: try MT5 endpoint (may require active MT5 connection)
       try {
         const res = await api.getMT5HistoricalData(normalizedSymbol, tf, count);
         return res.data || [];
@@ -835,10 +859,12 @@ const LiveTradingTab: React.FC<{
     }
   };
 
+  /** Inicio del día en hora local (sin convertir a UTC) para alinear con opened_at del servidor típico. */
   const startOfTodayIso = () => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    return d.toISOString();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00:00`;
   };
 
   const fetchDailyTrades = async () => {
@@ -1251,15 +1277,18 @@ const LiveTradingTab: React.FC<{
               ) : (
                 [...recentTrades]
                   .sort((a, b) => {
-                    // Pending trades first
-                    if (a.result === 'pending' && b.result !== 'pending') return -1;
-                    if (a.result !== 'pending' && b.result === 'pending') return 1;
-                    // Then by timestamp (newest first)
+                    const pa = normalizeTradeResult(a);
+                    const pb = normalizeTradeResult(b);
+                    if (pa === 'pending' && pb !== 'pending') return -1;
+                    if (pa !== 'pending' && pb === 'pending') return 1;
                     return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
                   })
-                  .slice(0, 10).map((trade, i) => (
+                  .slice(0, 10).map((trade, i) => {
+                  const ro = normalizeTradeResult(trade);
+                  const sentToBroker = Boolean((trade as any).order_id_platform);
+                  return (
                   <div key={i} className={`bg-slate-900 rounded-lg p-3 border ${
-                    trade.result === 'pending' ? 'border-yellow-500/50' : 'border-slate-700'
+                    ro === 'pending' ? 'border-yellow-500/50' : 'border-slate-700'
                   }`}>
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
@@ -1269,20 +1298,30 @@ const LiveTradingTab: React.FC<{
                           {trade.direction?.toUpperCase()}
                         </span>
                         <span className="text-sm">{trade.symbol}</span>
+                        <span
+                          className={`ml-1 px-1.5 py-0.5 rounded border text-[10px] ${
+                            sentToBroker
+                              ? 'bg-emerald-900/30 border-emerald-700 text-emerald-300'
+                              : 'bg-slate-800 border-slate-600 text-slate-300'
+                          }`}
+                          title={sentToBroker ? 'Orden enviada a IQ Option' : 'Operación local (no aparece en el historial de IQ)'}
+                        >
+                          {sentToBroker ? 'EN IQ' : 'LOCAL'}
+                        </span>
                       </div>
                       <span className={`font-medium text-sm ${
-                        trade.result === 'win' ? 'text-green-400' : 
-                        trade.result === 'loss' ? 'text-red-400' : 'text-yellow-400'
+                        ro === 'win' ? 'text-green-400' : 
+                        ro === 'loss' ? 'text-red-400' : 'text-yellow-400'
                       }`}>
-                        {trade.result === 'win' ? '✓ WIN' : 
-                         trade.result === 'loss' ? '✗ LOSS' : 'ACTIVA'}
+                        {ro === 'win' ? '✓ GANADA' : 
+                         ro === 'loss' ? '✗ PERDIDA' : 'ACTIVA'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-500">
                         ${trade.amount?.toFixed(2)} • {new Date(trade.timestamp).toLocaleTimeString()}
                       </span>
-                      {trade.result === 'pending' ? (
+                      {ro === 'pending' ? (
                         <CountdownTimer 
                           expirationTime={trade.expiration_time}
                           expirationMinutes={trade.expiration_minutes}
@@ -1295,7 +1334,7 @@ const LiveTradingTab: React.FC<{
                       )}
                     </div>
                   </div>
-                ))
+                );})
               )}
             </div>
           </div>
@@ -1346,6 +1385,20 @@ const LiveTradingTab: React.FC<{
                 </button>
               </div>
             </div>
+            {dailyResultStats.total > 0 && (
+              <div className="flex flex-wrap gap-3 mb-3 text-xs">
+                <span className="px-2 py-1 rounded bg-green-900/40 text-green-300 border border-green-800/50">
+                  GANADAS: <strong>{dailyResultStats.wins}</strong>
+                </span>
+                <span className="px-2 py-1 rounded bg-red-900/40 text-red-300 border border-red-800/50">
+                  PERDIDAS: <strong>{dailyResultStats.losses}</strong>
+                </span>
+                <span className="px-2 py-1 rounded bg-amber-900/30 text-amber-200 border border-amber-800/40">
+                  PENDIENTES: <strong>{dailyResultStats.pending}</strong>
+                </span>
+                <span className="text-slate-500 self-center">Total listado: {dailyResultStats.total}</span>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-2 mb-3">
               <div>
                 <label className="text-[10px] text-slate-400">Símbolo</label>
@@ -1410,7 +1463,11 @@ const LiveTradingTab: React.FC<{
                       </td>
                     </tr>
                   ) : (
-                    paginatedTrades.map((t: Trade, idx: number) => (
+                    paginatedTrades.map((t: Trade, idx: number) => {
+                      const outcome = normalizeTradeResult(t);
+                      const label =
+                        outcome === 'win' ? 'GANADA' : outcome === 'loss' ? 'PERDIDA' : 'PENDIENTE';
+                      return (
                       <tr key={idx} className="border-t border-slate-700">
                         <td className="py-2">{new Date(t.timestamp).toLocaleTimeString()}</td>
                         <td className="py-2">{t.symbol}</td>
@@ -1418,11 +1475,13 @@ const LiveTradingTab: React.FC<{
                         <td className="py-2">${t.amount?.toFixed ? t.amount.toFixed(2) : t.amount}</td>
                         <td className="py-2">{t.entry_price ?? '-'}</td>
                         <td className="py-2">{t.exit_price ?? '-'}</td>
-                        <td className={`py-2 ${t.result === 'win' ? 'text-green-400' : t.result === 'loss' ? 'text-red-400' : 'text-yellow-400'}`}>{t.result || 'pending'}</td>
+                        <td className={`py-2 font-semibold ${outcome === 'win' ? 'text-green-400' : outcome === 'loss' ? 'text-red-400' : 'text-yellow-400'}`}>
+                          {label}
+                        </td>
                         <td className="py-2">{typeof t.pnl === 'number' ? (t.pnl >= 0 ? '+' : '') + '$' + t.pnl.toFixed(2) : '-'}</td>
                         <td className="py-2">{t.strategy_used || '-'}</td>
                       </tr>
-                    ))
+                    );})
                   )}
                 </tbody>
               </table>

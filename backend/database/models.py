@@ -146,6 +146,7 @@ class Trade(Base):
             'market_trend': self.market_trend,
             'timeframe': self.timeframe,
             'execution_mode': self.execution_mode,
+            'order_id_platform': self.order_id_platform,
         }
 
 

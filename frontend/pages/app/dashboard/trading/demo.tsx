@@ -395,9 +395,15 @@ export default function TradingDemoProfessional() {
       const response = await fetch(`${BASE_URL}/api/trading/order/${tradeId}`);
       const data = await response.json();
       
-      if (data.status === 'success' && data.result) {
+      if (data.status === 'closed' && (data.result === 'win' || data.result === 'loss')) {
         const isWin = data.result === 'win';
-        const pnl = isWin ? config.tradeAmount * 0.8 : -config.tradeAmount;
+        const pnlRaw = data.profit;
+        const pnl = typeof pnlRaw === 'number' && Number.isFinite(pnlRaw)
+          ? pnlRaw
+          : parseFloat(String(pnlRaw));
+        if (!Number.isFinite(pnl)) {
+          return;
+        }
         
         setActiveTrades(prev => {
           const trade = prev.find(t => t.id === tradeId);
@@ -418,8 +424,7 @@ export default function TradingDemoProfessional() {
         });
         
         await fetchRealBalance();
-      } else {
-        // Fallback: close as simulated
+      } else if (data.status !== 'pending') {
         closeTrade(tradeId);
       }
     } catch (error) {

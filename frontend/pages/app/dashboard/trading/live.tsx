@@ -89,6 +89,17 @@ const TIMEFRAMES = [
   { value: '1h', label: '1 Hora' },
 ];
 
+/** Respuesta real del broker: éxito HTTP, status success, id de orden y no simulación. */
+function isLiveBrokerOrderSuccess(data: any, responseOk: boolean): boolean {
+  if (!responseOk || data?.status !== 'success') return false;
+  if (data?.mode === 'simulation' || data?.mode === 'simulation_blocked') return false;
+  const brokerId = data?.order_id ?? data?.order?.id;
+  if (brokerId == null || brokerId === '') return false;
+  const idStr = String(brokerId);
+  if (idStr.startsWith('SIM-') || idStr.startsWith('SIM_')) return false;
+  return true;
+}
+
 export default function TradingLiveProfessional() {
   const router = useRouter();
   
@@ -407,24 +418,30 @@ export default function TradingLiveProfessional() {
                 explanation: bestSignal.reasons.join(' | '),
               }),
             });
-            const orderData = await orderResponse.json();
-            if (orderData.status === 'success' || orderData.order_id) {
+            const orderData = await orderResponse.json().catch(() => ({}));
+            if (isLiveBrokerOrderSuccess(orderData, orderResponse.ok)) {
+              const oid = orderData.order_id ?? orderData.order?.id;
               const trade: Trade = {
-                id: orderData.order_id || `TRADE-${Date.now()}`,
+                id: String(oid),
                 symbol: bestSignal.symbol,
                 direction: bestSignal.direction,
                 amount: config.tradeAmount,
-                entryPrice: orderData.entry_price || 0,
+                entryPrice: orderData.order?.entry_price ?? orderData.entry_price || 0,
                 result: 'pending',
                 pnl: 0,
                 strategy: bestSignal.strategy,
                 openTime: new Date().toISOString(),
                 explanation: bestSignal.reasons.join(' | '),
                 platform: config.platform,
-                orderId: orderData.order_id,
+                orderId: oid,
               };
               setActiveTrades(prev => [...prev, trade]);
-              addLog(`✅ Operación abierta: ${trade.id}`, 'success');
+              addLog(`✅ Operación abierta en broker: ${trade.id}`, 'success');
+            } else {
+              addLog(
+                `Auto-ejecución cancelada: ${orderData.message || orderData.code || 'sin conexión al broker'}`,
+                'error'
+              );
             }
           } catch (execError: any) {
             addLog(`Error auto-ejecutando: ${execError.message}`, 'error');
@@ -467,31 +484,31 @@ export default function TradingLiveProfessional() {
       
       const data = await response.json();
       
-      if (data.status === 'success' || data.order_id) {
+      if (isLiveBrokerOrderSuccess(data, response.ok)) {
+        const oid = data.order_id ?? data.order?.id;
         const trade: Trade = {
-          id: data.order_id || `TRADE-${Date.now()}`,
+          id: String(oid),
           symbol: signal.symbol,
           direction: signal.direction,
           amount: config.tradeAmount,
-          entryPrice: data.entry_price || 0,
+          entryPrice: data.order?.entry_price ?? data.entry_price || 0,
           result: 'pending',
           pnl: 0,
           strategy: signal.strategy,
           openTime: new Date().toISOString(),
           explanation: signal.reasons.join(' | '),
           platform: config.platform,
-          orderId: data.order_id,
+          orderId: oid,
         };
         
         setActiveTrades(prev => [...prev, trade]);
-        addLog(`Operación abierta: ${trade.id}`, 'success');
+        addLog(`Operación abierta en broker: ${trade.id}`, 'success');
         
-        // Update balance
         if (accountInfo) {
           setAccountInfo(prev => prev ? { ...prev, balance: prev.balance - config.tradeAmount } : null);
         }
       } else {
-        throw new Error(data.message || 'Order failed');
+        throw new Error(data.message || data.code || 'La orden no se ejecutó en el broker (revisa conexión IQ Option)');
       }
     } catch (error: any) {
       addLog(`Error ejecutando orden: ${error.message}`, 'error');
@@ -507,9 +524,15 @@ export default function TradingLiveProfessional() {
         const response = await fetch(`${BASE_URL}/api/trading/order/${trade.orderId || trade.id}`);
         const data = await response.json();
         
-        if (data.status === 'closed' || data.result) {
-          const isWin = data.win || data.result === 'win';
-          const pnl = data.profit || (isWin ? trade.amount * 0.8 : -trade.amount);
+        if (data.status === 'closed' && (data.result === 'win' || data.result === 'loss')) {
+          const pnlRaw = data.profit;
+          const pnl = typeof pnlRaw === 'number' && Number.isFinite(pnlRaw)
+            ? pnlRaw
+            : parseFloat(String(pnlRaw));
+          if (!Number.isFinite(pnl)) {
+            continue;
+          }
+          const isWin = data.result === 'win';
           
           const closedTrade: Trade = {
             ...trade,

@@ -117,9 +117,19 @@ class TradeRepository:
         if result:
             query = query.filter(Trade.result == result)
         if start_date:
-            query = query.filter(Trade.created_at >= start_date)
+            query = query.filter(
+                or_(
+                    and_(Trade.opened_at.isnot(None), Trade.opened_at >= start_date),
+                    and_(Trade.opened_at.is_(None), Trade.created_at >= start_date),
+                )
+            )
         if end_date:
-            query = query.filter(Trade.created_at <= end_date)
+            query = query.filter(
+                or_(
+                    and_(Trade.opened_at.isnot(None), Trade.opened_at <= end_date),
+                    and_(Trade.opened_at.is_(None), Trade.created_at <= end_date),
+                )
+            )
         
         trades = query.order_by(desc(Trade.created_at)).offset(offset).limit(limit).all()
         return [t.to_dict() for t in trades]

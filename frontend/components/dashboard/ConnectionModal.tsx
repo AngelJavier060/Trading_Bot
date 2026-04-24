@@ -205,7 +205,10 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
 
               {/* Demo mode hint */}
               <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-3 text-xs text-blue-300">
-                <strong>¿Sin credenciales?</strong> Usa el botón <em>Demo Local</em> para probar el sistema sin conectar a IQ Option.
+                <strong>Demo en IQ Option (recomendado):</strong> selecciona <em>Demo</em> (PRACTICE) y conecta con tus credenciales.
+                <div className="mt-1 text-[11px] text-blue-200/80">
+                  <strong>Demo Local</strong> es solo para pruebas sin broker y <strong>NO</strong> aparece en el historial de IQ Option.
+                </div>
               </div>
             </div>
           ) : (
@@ -278,16 +281,21 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
 
         {/* Footer */}
         <div className="p-4 border-t border-slate-700 space-y-2">
-          {/* Demo local button - only for IQ Option */}
+          {/* Demo local button - only for IQ Option (secondary / explicit) */}
           {platform === 'iqoption' && (
-            <button
-              onClick={handleDemoMode}
-              disabled={isLoading}
-              className="w-full py-2 px-4 bg-slate-700 hover:bg-emerald-700 border border-emerald-700/50 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-emerald-300"
-            >
-              <FlaskConical className="w-4 h-4" />
-              Demo Local (sin broker)
-            </button>
+            <details className="w-full">
+              <summary className="cursor-pointer select-none text-xs text-slate-400 hover:text-slate-200">
+                Opciones avanzadas
+              </summary>
+              <button
+                onClick={handleDemoMode}
+                disabled={isLoading}
+                className="mt-2 w-full py-2 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-slate-200"
+              >
+                <FlaskConical className="w-4 h-4" />
+                Demo Local (SIN IQ Option)
+              </button>
+            </details>
           )}
           <div className="flex gap-3">
             <button

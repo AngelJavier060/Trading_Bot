@@ -15,7 +15,7 @@ from services.ml.ml_service import ml_service
 from services.strategy_performance import strategy_performance
 from services.auto_trainer import auto_trainer
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field, asdict
 from threading import Thread, Event
 from collections import deque
@@ -460,6 +460,7 @@ class LiveTradingService:
         """Get trade history with optional filtering."""
         try:
             rows = TradeRepository.get_history(limit=limit, account_type=account_type)
+            self._sync_db_pending_trades_with_iq(rows)
             return [self._map_db_trade_public(r) for r in rows]
         except Exception:
             history = self.trade_history
@@ -491,6 +492,7 @@ class LiveTradingService:
             if max_conf is not None:
                 rows = [r for r in rows if (r.get('confidence_level') or 0) <= max_conf]
             logger.info(f"DB returned {len(rows)} trades (limit={limit}, from={date_from}, to={date_to})")
+            self._sync_db_pending_trades_with_iq(rows)
             return [self._map_db_trade_public(r) for r in rows]
         except Exception as e:
             db_error = e
@@ -527,10 +529,83 @@ class LiveTradingService:
         logger.info(f"Fallback returning {len(items)} trades after filtering")
         return [t.to_dict() for t in items]
 
+    @staticmethod
+    def _unpack_check_win_v4(raw: Any) -> Tuple[Any, Any]:
+        """Normaliza la respuesta de iqoptionapi.check_win_v4 (suele ser (estado, profit))."""
+        if raw is None:
+            return None, None
+        if isinstance(raw, (tuple, list)):
+            if len(raw) >= 2:
+                return raw[0], raw[1]
+            if len(raw) == 1:
+                return raw[0], None
+        if isinstance(raw, (int, float)):
+            return True, raw
+        return None, None
+
+    def _sync_db_pending_trades_with_iq(self, rows: List[Dict], max_check: int = 25) -> None:
+        """
+        Actualiza en BD filas aún 'pending' consultando el resultado en IQ Option
+        (órdenes manuales u otras que no pasaron por pending_settlements en memoria).
+        """
+        iq = trading_service.get_iq_option()
+        if not iq or not iq.check_connect():
+            return
+        checked = 0
+        for r in rows:
+            if checked >= max_check:
+                break
+            res = (r.get('result') or 'pending')
+            if isinstance(res, str) and res.lower() in ('win', 'loss', 'breakeven'):
+                continue
+            oid = r.get('order_id_platform')
+            if not oid:
+                continue
+            checked += 1
+            try:
+                oid_int = int(str(oid).strip())
+            except (TypeError, ValueError):
+                continue
+            try:
+                raw = iq.check_win_v4(oid_int)
+            except Exception as e:
+                logger.debug(f"check_win_v4 omitido para {oid}: {e}")
+                continue
+            status_part, profit_part = self._unpack_check_win_v4(raw)
+            if isinstance(status_part, str) and status_part.lower() in (
+                'pending', 'open', 'active', 'processing'
+            ):
+                continue
+            pnl = None
+            try:
+                if profit_part is not None:
+                    pnl = float(profit_part)
+            except (TypeError, ValueError):
+                pnl = None
+            if pnl is None:
+                continue
+            out = 'win' if pnl > 0 else 'loss'
+            tid = r.get('trade_id')
+            if not tid:
+                continue
+            try:
+                TradeRepository.update_result(str(tid), out, pnl, None)
+                r['result'] = out
+                r['profit_loss'] = pnl
+            except Exception as e:
+                logger.warning(f"No se pudo persistir resultado IQ para trade {tid}: {e}")
+
     def _map_db_trade_public(self, r: Dict) -> Dict:
         """Map DB trade row (Trade.to_dict()) to public API shape expected by frontend."""
         # Prefer opened_at as trade timestamp; fallback to created_at
         ts = r.get('opened_at') or r.get('created_at')
+        raw_res = r.get('result')
+        low = (raw_res or 'pending').lower() if isinstance(raw_res, str) else 'pending'
+        if low not in ('win', 'loss', 'pending', 'breakeven'):
+            low = 'pending'
+        pnl_raw = r.get('profit_loss')
+        if low == 'pending' and isinstance(pnl_raw, (int, float)) and pnl_raw != 0:
+            low = 'win' if pnl_raw > 0 else 'loss'
         # Normalize keys used by frontend
         return {
             'id': r.get('trade_id') or str(r.get('id')),
@@ -542,10 +617,13 @@ class LiveTradingService:
             'amount': r.get('amount'),
             'entry_price': r.get('entry_price'),
             'exit_price': r.get('exit_price'),
-            'result': r.get('result'),
-            'pnl': r.get('profit_loss'),
+            'result': low,
+            'pnl': pnl_raw,
             'confidence': r.get('confidence_level'),
             'strategy_used': r.get('strategy_name'),
+            # Permite a la UI diferenciar "operación enviada a IQ" vs "local"
+            'order_id_platform': r.get('order_id_platform'),
+            'is_synced': r.get('is_synced'),
         }
 
     def _settle_due_trades(self) -> None:
@@ -582,50 +660,56 @@ class LiveTradingService:
                 ext_id = getattr(trade_obj, 'external_id', None)
                 if iq and iq.check_connect() and ext_id:
                     try:
-                        # Verificar resultado de opción binaria
-                        # Nota: check_win_v3/v4 requiere el ID de la orden
-                        win_val = iq.check_win_v4(int(ext_id))
-                        # La librería puede devolver float/int (profit) o tupla/list
-                        if isinstance(win_val, (tuple, list)):
-                            win_val = win_val[0] if win_val else 0
-                        if isinstance(win_val, (int, float)):
-                            pnl = float(win_val)
-                            if pnl > 0:
-                                result = 'win'
-                                checked_with_broker = True
-                                logger.info(f"IQ Option WIN: {trade_id} PnL=+{pnl}")
-                            elif pnl < 0:
-                                result = 'loss'
-                                checked_with_broker = True
-                                logger.info(f"IQ Option LOSS: {trade_id} PnL={pnl}")
-                            else:
-                                # pnl == 0: still pending or breakeven - keep in queue
-                                logger.info(f"IQ Option: trade {trade_id} still pending (pnl=0)")
-                                self.pending_settlements.append(p)
-                                continue
+                        win_raw = iq.check_win_v4(int(ext_id))
+                        status_part, profit_part = self._unpack_check_win_v4(win_raw)
+                        if isinstance(status_part, str) and status_part.lower() in (
+                            'pending', 'open', 'active', 'processing'
+                        ):
+                            self.pending_settlements.append(p)
+                            continue
+                        pnl_float = None
+                        try:
+                            if profit_part is not None:
+                                pnl_float = float(profit_part)
+                        except (TypeError, ValueError):
+                            pnl_float = None
+                        if pnl_float is None:
+                            logger.info(f"IQ Option: trade {trade_id} aún pendiente (sin PnL en check_win_v4)")
+                            self.pending_settlements.append(p)
+                            continue
+                        pnl = pnl_float
+                        result = 'win' if pnl > 0 else 'loss'
+                        checked_with_broker = True
+                        logger.info(f"IQ Option cierre {trade_id}: {result} PnL={pnl}")
                     except Exception as e:
                         logger.warning(f"No se pudo verificar resultado con IQ Option para {trade_id}: {e}")
 
                 if not checked_with_broker:
-                    # Fallback a simulación de precio si no se pudo verificar
+                    ext_id = getattr(trade_obj, 'external_id', None)
+                    if ext_id:
+                        # Operación enviada a IQ Option: no inventar resultado localmente
+                        logger.warning(
+                            f"Sin resultado de IQ para {trade_id} (order_id={ext_id}); se reintenta en el siguiente ciclo"
+                        )
+                        self.pending_settlements.append(p)
+                        continue
+                    # Solo simular si nunca hubo id de broker (legacy / pruebas locales)
                     try:
                         if unified_data_service.is_connected():
                             exit_price = float(unified_data_service.get_current_price(symbol))
-                    except:
+                    except Exception:
                         pass
                     if exit_price == 0:
-                        # Simulate small move based on direction (only if absolutely no data)
                         exit_price = trade_obj.entry_price * (1.0 + (0.0005 if trade_obj.direction == 'call' else -0.0005))
-                    
-                    # Determine result for binary style locally
+
                     if trade_obj.direction == 'call':
                         is_win = exit_price > trade_obj.entry_price
                     else:
                         is_win = exit_price < trade_obj.entry_price
-                    
+
                     result = 'win' if is_win else 'loss'
                     pnl = round(trade_obj.amount * 0.85, 2) if is_win else -round(trade_obj.amount, 2)
-                
+
                 self.complete_trade(trade_id, exit_price, result, pnl)
                 
                 # Actualizar balance después de cerrar operación
@@ -1172,9 +1256,6 @@ class LiveTradingService:
         executed_on_broker = False
         broker_error = None
         
-        account_type_up = str(account_type).upper()
-        is_real_account = account_type_up == 'REAL'
-
         if platform == 'iqoption':
             iq = trading_service.get_iq_option()
             broker_connected = False
@@ -1204,13 +1285,10 @@ class LiveTradingService:
                 except Exception as e:
                     broker_error = str(e)
                     logger.error(f"IQ Option execution error: {e}")
-            elif not is_real_account:
-                # DEMO/PRACTICE mode without live broker → simulate locally
-                trade_id_broker = f"SIM_{int(time.time() * 1000)}"
-                executed_on_broker = True
-                logger.info(f"📊 DEMO trade simulated locally: {symbol} {direction} (no broker connection)")
             else:
-                broker_error = "IQ Option not connected. Connect before executing REAL trades."
+                broker_error = (
+                    "IQ Option no conectado. Conecta la cuenta (PRACTICE o REAL) antes de ejecutar operaciones."
+                )
         elif platform == 'mt5':
             broker_error = "MT5 execution not yet fully implemented via this unified method"
         else:

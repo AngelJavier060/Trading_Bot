@@ -199,6 +199,7 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
   const macdSignalRef = useRef<ISeriesApi<'Line'>>();
   const macdHistRef = useRef<ISeriesApi<'Histogram'>>();
   const [data, setData] = useState<CandlestickData<Time>[]>([]);
+  const [dataHint, setDataHint] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
   const effectiveHeight = isExpanded ? Math.max(height * 2.5, 900) : height;
@@ -252,6 +253,7 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
   // Fetch data when symbol/timeframe changes
   useEffect(() => {
     let cancelled = false;
+    setDataHint(null);
     (async () => {
       try {
         const raw = await loadCandles(symbol, timeframe, candleCount);
@@ -277,10 +279,20 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
           const t = c.time as number;
           if (!seen.has(t)) { seen.add(t); mapped.push(c); }
         }
-        if (!cancelled) setData(mapped);
+        if (!cancelled) {
+          setData(mapped);
+          setDataHint(
+            mapped.length === 0
+              ? 'Sin velas para este activo. Conecta IQ Option en el backend, elige OTC si operas OTC, o revisa símbolo/timeframe.'
+              : null
+          );
+        }
       } catch (e) {
         console.error('[LWC] fetch candles failed', e);
-        if (!cancelled) setData([]);
+        if (!cancelled) {
+          setData([]);
+          setDataHint('Error al cargar velas. Comprueba que el backend esté en marcha y la API de datos responda.');
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -635,7 +647,13 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
       </div>
 
       {/* Chart panes */}
-      <div ref={containerRef} style={{ height: mainH }} />
+      <div ref={containerRef} className="relative" style={{ height: mainH }}>
+        {dataHint && data.length === 0 && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/85 px-4 text-center text-xs text-slate-300 pointer-events-none">
+            {dataHint}
+          </div>
+        )}
+      </div>
       <div ref={rsiContainerRef} style={{ height: subH }} />
 
       {/* Keyboard shortcut hint */}

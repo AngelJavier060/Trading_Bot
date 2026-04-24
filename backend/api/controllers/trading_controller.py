@@ -21,6 +21,20 @@ except ImportError:
     DB_AVAILABLE = False
     logging.warning("Database service not available")
 
+def _unpack_check_win_v4(raw):
+    """Igual que LiveTradingService: normaliza respuesta de iqoptionapi.check_win_v4."""
+    if raw is None:
+        return None, None
+    if isinstance(raw, (tuple, list)):
+        if len(raw) >= 2:
+            return raw[0], raw[1]
+        if len(raw) == 1:
+            return raw[0], None
+    if isinstance(raw, (int, float)):
+        return True, raw
+    return None, None
+
+
 class TradingController:
     def __init__(self):
         # El estado ahora se gestionará preferentemente a través de trading_service
@@ -264,28 +278,20 @@ class TradingController:
             direction = validated_data.direction.lower()
             expiration = validated_data.expiration
             
-            # If not connected, run in simulation mode
+            # Sin sesión broker: no simular como éxito (evita confusión con operaciones reales)
             if not self.iq or not self.connected:
-                import random
-                from datetime import datetime
-                
-                # Generate simulated order
-                order_id = f"SIM-{int(datetime.now().timestamp())}-{random.randint(1000, 9999)}"
-                entry_price = round(random.uniform(1.05, 1.15), 5) if 'EUR' in asset or 'GBP' in asset else round(random.uniform(100, 150), 3)
-                
-                logging.info(f"[SIMULACIÓN] Orden: {asset} {direction.upper()} ${amount} exp:{expiration}m")
-                
+                logging.warning(
+                    f"Orden rechazada — sin IQ Option conectado: {asset} {direction.upper()} ${amount}"
+                )
                 return jsonify({
-                    'status': 'success',
-                    'message': 'Orden simulada ejecutada',
-                    'order_id': order_id,
-                    'entry_price': entry_price,
-                    'asset': asset,
-                    'direction': direction,
-                    'amount': amount,
-                    'expiration': expiration,
-                    'mode': 'simulation'
-                })
+                    'status': 'error',
+                    'message': (
+                        'No hay conexión activa con IQ Option. Conecta la cuenta en el panel '
+                        'antes de enviar órdenes; no se ejecutará ninguna operación simulada en el broker.'
+                    ),
+                    'code': 'BROKER_NOT_CONNECTED',
+                    'mode': 'simulation_blocked',
+                }), 503
 
             # Rest of real trading logic follows...
             amount = validated_data.amount
@@ -398,6 +404,8 @@ class TradingController:
                 return jsonify({
                     'status': 'success',
                     'message': 'Orden ejecutada correctamente',
+                    'mode': 'live',
+                    'order_id': order_id,
                     'order': {
                         'id': order_id,
                         'asset': asset,
@@ -928,23 +936,52 @@ class TradingController:
                 }), 400
 
             try:
-                # Check if order is complete
-                result, profit = self.iq.check_win_v4(order_id)
-                
-                if result is not None:
+                try:
+                    oid = int(str(order_id).strip())
+                except (TypeError, ValueError):
                     return jsonify({
-                        'status': 'closed',
-                        'order_id': order_id,
-                        'win': profit > 0,
-                        'profit': profit,
-                        'result': 'win' if profit > 0 else 'loss'
-                    })
-                else:
+                        'status': 'error',
+                        'message': 'order_id inválido'
+                    }), 400
+
+                raw = self.iq.check_win_v4(oid)
+                status_part, profit_part = _unpack_check_win_v4(raw)
+
+                if isinstance(status_part, str) and status_part.lower() in (
+                    'pending', 'open', 'active', 'processing'
+                ):
                     return jsonify({
                         'status': 'pending',
                         'order_id': order_id,
                         'message': 'Order still active'
                     })
+
+                if status_part is None and profit_part is None:
+                    return jsonify({
+                        'status': 'pending',
+                        'order_id': order_id,
+                        'message': 'Order still active'
+                    })
+
+                try:
+                    profit = float(profit_part) if profit_part is not None else None
+                except (TypeError, ValueError):
+                    profit = None
+
+                if profit is None:
+                    return jsonify({
+                        'status': 'pending',
+                        'order_id': order_id,
+                        'message': 'Esperando PnL del broker'
+                    })
+
+                return jsonify({
+                    'status': 'closed',
+                    'order_id': order_id,
+                    'win': profit > 0,
+                    'profit': profit,
+                    'result': 'win' if profit > 0 else 'loss'
+                })
             except Exception as e:
                 return jsonify({
                     'status': 'pending',

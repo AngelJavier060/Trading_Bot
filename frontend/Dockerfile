@@ -3,6 +3,10 @@ FROM node:20-alpine AS builder
 # Directorio de trabajo dentro del contenedor
 WORKDIR /app
 
+# NEXT_PUBLIC_* se “hornea” en el build del cliente; hay que pasarlo en build time.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 # Copiar archivos de dependencias
 COPY frontend/package*.json ./
 

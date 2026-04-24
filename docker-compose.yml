@@ -40,6 +40,8 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "https://api-trading.improvement-solution.com"
     container_name: trading_frontend
     restart: unless-stopped
     depends_on:

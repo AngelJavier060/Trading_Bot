@@ -571,6 +571,89 @@ class LiveTradingController:
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
+    def debug_buy(self):
+        """
+        Diagnostic: inspect IQ Option connection, active balance, and asset
+        availability — does NOT place any order.
+
+        GET /api/live/debug-buy?symbol=EURUSD
+        """
+        try:
+            from services.trading.sse_service import sse_service
+            symbol = request.args.get('symbol', 'EURUSD').upper().strip()
+
+            iq = trading_service.get_iq_option()
+            if not iq:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'IQ Option instance not initialized — connect first',
+                }), 400
+
+            connected = False
+            try:
+                connected = bool(iq.check_connect())
+            except Exception as conn_err:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'check_connect() raised: {conn_err}',
+                }), 500
+
+            if not connected:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'IQ Option is not connected',
+                }), 400
+
+            # Balance info
+            balance, currency, balance_mode = None, None, None
+            try:
+                balance = float(iq.get_balance())
+                currency = iq.get_currency()
+            except Exception:
+                pass
+            try:
+                balance_mode = iq.get_balance_mode()
+            except Exception:
+                pass
+
+            # Asset open-time info for the requested symbol
+            asset_open = None
+            asset_type_found = None
+            open_time_entry = None
+            try:
+                times = iq.get_all_open_time()
+                for opt_type in ('turbo', 'binary', 'digital'):
+                    if opt_type in times and symbol in times[opt_type]:
+                        asset_open = times[opt_type][symbol].get('open', False)
+                        asset_type_found = opt_type
+                        open_time_entry = times[opt_type][symbol]
+                        break
+            except Exception as ot_err:
+                open_time_entry = {'error': str(ot_err)}
+
+            # Recent backend logs for this symbol (last few pending settlements)
+            pending_count = sum(
+                1 for p in self.trading_service.pending_settlements
+                if p.get('symbol') == symbol
+            )
+
+            return jsonify({
+                'status': 'ok',
+                'connected': connected,
+                'balance': balance,
+                'currency': currency,
+                'active_balance_mode': balance_mode,
+                'symbol': symbol,
+                'asset_open': asset_open,
+                'asset_type': asset_type_found,
+                'open_time_data': open_time_entry,
+                'pending_settlements_for_symbol': pending_count,
+                'sse_clients_connected': sse_service.client_count,
+            })
+        except Exception as e:
+            logger.error(f'debug_buy error: {e}')
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 # Singleton instance
 live_trading_controller = LiveTradingController()

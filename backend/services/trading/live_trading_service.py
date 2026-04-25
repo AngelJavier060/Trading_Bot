@@ -1351,17 +1351,33 @@ class LiveTradingService:
                         except Exception:
                             pass
                     if not broker_error:
-                        check, order_id = iq.buy(amount, symbol, direction, expiration)
+                        logger.info(f"🔄 Calling iq.buy(): {symbol} {direction} amount={amount} expiration={expiration}")
+                        buy_result = iq.buy(amount, symbol, direction, expiration)
+                        logger.info(f"📩 iq.buy() raw response: {buy_result!r}")
+                        check, order_id = (buy_result if isinstance(buy_result, (tuple, list)) and len(buy_result) >= 2
+                                           else (bool(buy_result), None))
                         if check:
                             trade_id_broker = order_id
                             executed_on_broker = True
                             logger.info(f"✅ Trade executed on IQ Option: {symbol} {direction} ID:{order_id}")
                             self._update_balance()
                         else:
-                            broker_error = "Broker rejected trade (Market closed or limit reached)"
+                            broker_error = f"Broker rejected trade — buy() returned: {buy_result!r}"
+                            logger.warning(f"❌ iq.buy() rejected: {broker_error}")
                 except Exception as e:
                     broker_error = str(e)
                     logger.error(f"IQ Option execution error: {e}")
+
+                # Fallback: si el broker rechazó y es cuenta DEMO → simular localmente
+                if not executed_on_broker and is_demo:
+                    trade_id_broker = f"DEMO-FB-{int(time.time() * 1000)}"
+                    executed_on_broker = True
+                    logger.warning(
+                        f"⚠️ Broker rejected — falling back to local demo simulation: "
+                        f"{symbol} {direction} (reason: {broker_error})"
+                    )
+                    broker_error = None
+
             elif is_demo:
                 # Modo DEMO sin broker conectado: simular la orden localmente
                 trade_id_broker = f"DEMO-{int(time.time() * 1000)}"
@@ -1411,11 +1427,21 @@ class LiveTradingService:
         if trade_id_broker:
             trade.external_id = str(trade_id_broker)
             # Solo persistir el ID de orden real en DB; los DEMO-... son órdenes simuladas.
-            if not str(trade_id_broker).startswith('DEMO-'):
+            is_real_order = not str(trade_id_broker).startswith('DEMO-')
+            if is_real_order:
                 try:
                     TradeRepository.set_order_id_platform(trade.id, str(trade_id_broker))
                 except Exception:
                     pass
+                # Launch background watcher: polls check_win_v4 and pushes SSE event
+                watcher = Thread(
+                    target=self._watch_order_result,
+                    args=(trade.id, str(trade_id_broker), expiration * 60),
+                    daemon=True,
+                    name=f"order-watcher-{trade.id[:8]}"
+                )
+                watcher.start()
+                logger.info(f"🚀 Order watcher thread started for trade {trade.id} order {trade_id_broker}")
         
         self.status.last_trade = trade.to_dict()
         return {
@@ -1424,6 +1450,104 @@ class LiveTradingService:
             'broker_id': trade_id_broker,
             'message': 'Trade executed and recorded successfully'
         }
+
+    def _watch_order_result(self, trade_id: str, external_id: str, expiration_sec: int) -> None:
+        """
+        Background thread: polls IQ Option check_win_v4 every 2 s until the
+        binary option settles, then pushes an SSE event to all frontend clients.
+        Acts as the real-time equivalent of the old timer-based _settle_due_trades.
+        """
+        from services.trading.sse_service import sse_service
+
+        deadline = time.time() + expiration_sec + 90  # expiration + 90 s safety buffer
+        poll_interval = 2  # seconds between check_win_v4 calls
+
+        logger.info(
+            f"👀 Order watcher started: trade={trade_id} order={external_id} "
+            f"deadline in {expiration_sec + 90}s"
+        )
+
+        while time.time() < deadline:
+            time.sleep(poll_interval)
+            iq = trading_service.get_iq_option()
+            if not iq:
+                continue
+            try:
+                if not iq.check_connect():
+                    continue
+            except Exception:
+                continue
+
+            try:
+                raw = iq.check_win_v4(int(external_id))
+            except Exception as e:
+                logger.debug(f"check_win_v4 error for {trade_id}: {e}")
+                continue
+
+            status_part, profit_part = self._unpack_check_win_v4(raw)
+
+            # Still open
+            if isinstance(status_part, str) and status_part.lower() in (
+                'pending', 'open', 'active', 'processing'
+            ):
+                continue
+            if profit_part is None:
+                continue
+
+            try:
+                pnl = float(profit_part)
+            except (TypeError, ValueError):
+                continue
+
+            result = 'win' if pnl > 0 else 'loss'
+            logger.info(f"🏁 Order watcher resolved: trade={trade_id} {result} PnL={pnl}")
+
+            # Remove from pending_settlements (avoids double-settling)
+            self.pending_settlements = [
+                p for p in self.pending_settlements if p.get('id') != trade_id
+            ]
+
+            # Settle the in-memory trade object
+            try:
+                self.complete_trade(trade_id, 0.0, result, pnl)
+            except Exception as e:
+                logger.warning(f"complete_trade failed for {trade_id}: {e}")
+
+            # Persist to DB
+            try:
+                TradeRepository.update_result(trade_id, result, pnl, None)
+            except Exception:
+                pass
+
+            # Push real-time SSE event to all connected frontend clients
+            sse_service.push('trade_result', {
+                'trade_id': trade_id,
+                'order_id': external_id,
+                'result': result,
+                'profit': pnl,
+            })
+
+            # Refresh and broadcast balance
+            self._update_balance()
+            try:
+                balance = float(iq.get_balance())
+                sse_service.push('balance_update', {
+                    'balance': balance,
+                    'platform': 'iqoption',
+                })
+            except Exception:
+                pass
+
+            return  # done
+
+        logger.warning(
+            f"⏰ Order watcher timed out: trade={trade_id} order={external_id}"
+        )
+        sse_service.push('trade_timeout', {
+            'trade_id': trade_id,
+            'order_id': external_id,
+            'message': 'Result not received within deadline'
+        })
 
     def _execute_auto_trade(self, symbol: str, direction: str, confidence: float, signal_data: Dict) -> None:
         """Execute an automatic trade."""

@@ -2,9 +2,13 @@
 Live Trading API Routes
 =======================
 Routes for live trading operations with real-time status.
+
+NOTE: Flask must be started with threaded=True (default in dev) for SSE to work —
+each SSE client holds an open response stream in its own thread.
 """
 
-from flask import Blueprint
+import queue as _queue
+from flask import Blueprint, Response, stream_with_context, request
 from api.controllers.live_trading_controller import live_trading_controller
 
 live_trading_bp = Blueprint('live_trading', __name__)
@@ -98,3 +102,54 @@ def get_trainer_status():
 def test():
     """Test route."""
     return {"message": "Live trading routes working", "status": "ok"}
+
+
+@live_trading_bp.route('/events', methods=['GET'])
+def sse_events():
+    """
+    Server-Sent Events stream — pushes trade_result, balance_update,
+    trade_timeout events in real time as IQ Option orders settle.
+
+    Frontend connects once:  new EventSource('/api/live/events')
+    """
+    from services.trading.sse_service import sse_service
+
+    client_q = sse_service.subscribe()
+
+    def generate():
+        try:
+            # Initial handshake
+            yield "event: connected\ndata: {\"status\": \"ok\"}\n\n"
+            while True:
+                try:
+                    msg = client_q.get(timeout=20)
+                    yield msg
+                except _queue.Empty:
+                    # Keep-alive comment every 20 s so proxies don't close the connection
+                    yield ": heartbeat\n\n"
+        except GeneratorExit:
+            pass
+        finally:
+            sse_service.unsubscribe(client_q)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        }
+    )
+
+
+@live_trading_bp.route('/debug-buy', methods=['GET'])
+def debug_buy():
+    """
+    Diagnostic endpoint — checks IQ Option connection health and asset
+    availability WITHOUT placing a real order.
+
+    Query params:
+        symbol  (default: EURUSD)
+    """
+    return live_trading_controller.debug_buy()

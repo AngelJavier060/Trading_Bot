@@ -14,4 +14,4 @@ if __name__ == '__main__':
     print("   - GET  http://127.0.0.1:5000/test")
     print("   - POST http://127.0.0.1:5000/api/trading/connect")
     print("   - GET  http://127.0.0.1:5000/api/trading/check-connection")
-    app.run(host="0.0.0.0", debug=debug, port=5000)
+    app.run(host="0.0.0.0", debug=debug, port=5000, threaded=True)

@@ -898,9 +898,7 @@ const LiveTradingTab: React.FC<{
   const handleModeChange = (mode: 'auto' | 'manual') => {
     if (mode === 'auto') {
       if (platform === 'iqoption' && !iqConnected) {
-        toast.error('Debes conectar IQ Option para usar el modo automático');
-        onOpenConnectionModal?.();
-        return;
+        toast('Modo DEMO sin broker: operaciones simuladas localmente', { icon: '📋' });
       }
       if (platform === 'mt5' && !mt5Connected) {
         toast.error('Debes conectar MT5 para usar el modo automático');
@@ -914,10 +912,13 @@ const LiveTradingTab: React.FC<{
   // Start trading handler
   const handleToggleTrading = async () => {
     if (!isTrading) {
-      // Validation before starting
       if (tradingMode === 'auto') {
         if (platform === 'iqoption' && !iqConnected) {
-          toast.error('Conecta IQ Option primero');
+          toast('Iniciando en modo DEMO simulado (sin broker conectado)', { icon: '📋' });
+        }
+        if (platform === 'mt5' && !mt5Connected) {
+          toast.error('Debes conectar MT5 para usar el modo automático');
+          onOpenConnectionModal?.();
           return;
         }
       }
@@ -1270,7 +1271,26 @@ const LiveTradingTab: React.FC<{
 
           {/* Recent Trades with Countdown - Pending first */}
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-            <h3 className="text-sm font-semibold mb-3">Operaciones Activas</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">Operaciones Activas</h3>
+              {!iqConnected && recentTrades.some(t => normalizeTradeResult(t) === 'pending') && (
+                <button
+                  onClick={() => onOpenConnectionModal?.()}
+                  className="px-2 py-1 text-[10px] bg-amber-600/20 border border-amber-600/50 text-amber-400 rounded hover:bg-amber-600/30 transition-colors"
+                >
+                  ⚠️ Modo Simulación — Conectar IQ para operar real
+                </button>
+              )}
+            </div>
+            {!iqConnected && recentTrades.length > 0 && (
+              <div className="mb-3 px-3 py-2 bg-amber-900/20 border border-amber-700/40 rounded-lg text-xs text-amber-300 flex items-start gap-2">
+                <span className="mt-0.5">🔸</span>
+                <span>
+                  <strong>Modo Simulación activo.</strong> Las operaciones se calculan localmente y <strong>no se envían a IQ Option</strong>.
+                  Para ejecutar operaciones reales en la plataforma, conecta tu cuenta IQ Option primero.
+                </span>
+              </div>
+            )}
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {recentTrades.length === 0 ? (
                 <p className="text-sm text-slate-500 text-center py-4">Sin operaciones recientes</p>
@@ -1286,50 +1306,52 @@ const LiveTradingTab: React.FC<{
                   .slice(0, 10).map((trade, i) => {
                   const ro = normalizeTradeResult(trade);
                   const sentToBroker = Boolean((trade as any).order_id_platform);
+                  const borderColor = ro === 'win' ? 'border-green-500/60' : ro === 'loss' ? 'border-red-500/60' : 'border-yellow-500/50';
                   return (
-                  <div key={i} className={`bg-slate-900 rounded-lg p-3 border ${
-                    ro === 'pending' ? 'border-yellow-500/50' : 'border-slate-700'
-                  }`}>
+                  <div key={i} className={`bg-slate-900 rounded-lg p-3 border ${borderColor}`}>
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
-                        <span className={`text-sm font-medium ${
+                        <span className={`text-sm font-bold ${
                           trade.direction === 'call' ? 'text-green-400' : 'text-red-400'
                         }`}>
                           {trade.direction?.toUpperCase()}
                         </span>
-                        <span className="text-sm">{trade.symbol}</span>
+                        <span className="text-sm font-medium">{trade.symbol}</span>
                         <span
-                          className={`ml-1 px-1.5 py-0.5 rounded border text-[10px] ${
+                          className={`ml-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold ${
                             sentToBroker
-                              ? 'bg-emerald-900/30 border-emerald-700 text-emerald-300'
-                              : 'bg-slate-800 border-slate-600 text-slate-300'
+                              ? 'bg-emerald-900/40 border-emerald-600 text-emerald-300'
+                              : 'bg-amber-900/30 border-amber-700 text-amber-400'
                           }`}
-                          title={sentToBroker ? 'Orden enviada a IQ Option' : 'Operación local (no aparece en el historial de IQ)'}
+                          title={sentToBroker
+                            ? 'Orden enviada y ejecutada en IQ Option (visible en historial de la plataforma)'
+                            : 'Simulación local — IQ Option no conectado. Conecta la plataforma para ejecutar operaciones reales.'}
                         >
-                          {sentToBroker ? 'EN IQ' : 'LOCAL'}
+                          {sentToBroker ? '🔗 IQ Option' : '🔸 SIMULADO'}
                         </span>
                       </div>
-                      <span className={`font-medium text-sm ${
-                        ro === 'win' ? 'text-green-400' : 
+                      <span className={`font-bold text-sm ${
+                        ro === 'win' ? 'text-green-400' :
                         ro === 'loss' ? 'text-red-400' : 'text-yellow-400'
                       }`}>
-                        {ro === 'win' ? '✓ GANADA' : 
-                         ro === 'loss' ? '✗ PERDIDA' : 'ACTIVA'}
+                        {ro === 'win' ? '✅ GANADA' :
+                         ro === 'loss' ? '❌ PERDIDA' : '⏳ ACTIVA'}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-500">
+                      <span className="text-slate-400">
                         ${trade.amount?.toFixed(2)} • {new Date(trade.timestamp).toLocaleTimeString()}
+                        {(trade as any).entry_price ? ` • Entrada: ${(trade as any).entry_price}` : ''}
                       </span>
                       {ro === 'pending' ? (
-                        <CountdownTimer 
+                        <CountdownTimer
                           expirationTime={trade.expiration_time}
                           expirationMinutes={trade.expiration_minutes}
                           timestamp={trade.timestamp}
                         />
                       ) : (
-                        <span className={trade.pnl && trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>
-                          {trade.pnl ? (trade.pnl >= 0 ? '+' : '') + '$' + trade.pnl.toFixed(2) : '-'}
+                        <span className={`font-semibold ${(trade.pnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {trade.pnl != null ? ((trade.pnl >= 0 ? '+' : '') + '$' + Math.abs(trade.pnl).toFixed(2)) : '-'}
                         </span>
                       )}
                     </div>
@@ -1770,20 +1792,24 @@ const TradingDashboard: React.FC = () => {
     fetchLiveStatus();
   }, []);
 
+  // Sequential poll: status first (triggers backend settlement), then history (reads results)
+  const pollLiveData = async () => {
+    await fetchLiveStatus();   // triggers _settle_due_trades on backend
+    await refreshTrades();     // now history has up-to-date WIN/LOSS
+  };
+
   // Polling for live status - always poll when on live tab, more frequently when trading
   useEffect(() => {
     // Initial fetch when switching to live tab
     if (activeTab === 'live') {
-      fetchLiveStatus();
-      refreshTrades();
+      pollLiveData();
     }
 
-    // Set up polling interval
-    const pollInterval = isTrading ? 3000 : 10000; // 3s when trading, 10s otherwise
+    // Set up polling interval - 3s when trading/pending, 8s otherwise
+    const pollInterval = isTrading ? 3000 : 8000;
     const interval = setInterval(() => {
       if (activeTab === 'live') {
-        fetchLiveStatus();
-        refreshTrades();
+        pollLiveData();
         if (isTrading && tradingMode === 'auto') {
           refreshSignals();
         }
@@ -1854,6 +1880,7 @@ const TradingDashboard: React.FC = () => {
 
   const refreshTrades = async () => {
     try {
+      // getLiveHistory also triggers settlement on the backend
       const res = await api.getLiveHistory(10);
       if (res.trades) {
         setRecentTrades(res.trades);
@@ -1862,6 +1889,16 @@ const TradingDashboard: React.FC = () => {
       // ignore
     }
   };
+
+  // Fast poll when there are pending trades waiting for result
+  const hasPendingTrades = recentTrades.some(t => normalizeTradeResult(t) === 'pending');
+  useEffect(() => {
+    if (!hasPendingTrades) return;
+    const fastPoll = setInterval(() => {
+      refreshTrades();
+    }, 2000);
+    return () => clearInterval(fastPoll);
+  }, [hasPendingTrades]);
 
   const handleConnectIQ = () => {
     setConnectionPlatform('iqoption');
@@ -1941,7 +1978,9 @@ const TradingDashboard: React.FC = () => {
           strategies: mappedStrategies,
           amount: config.betAmount || 10,
           min_confidence: config.minConfidence || 60,
-          expiration: config.expiration || 5
+          expiration: config.expiration || 5,
+          max_concurrent: config.maxConcurrentTrades || 3,
+          max_daily_trades: config.maxDailyTrades || 50,
         });
         setIsTrading(true);
         toast.success(`Trading iniciado - Escaneando ${selectedSymbols.length} activos`);
@@ -1994,12 +2033,19 @@ const TradingDashboard: React.FC = () => {
         strategy: signal.strategy,
         confidence: signal.confidence,
         indicators: signal.indicators,
-        reasons: signal.reasons
+        reasons: signal.reasons,
+        platform: platform,
+        account_type: iqConnected ? 'PRACTICE' : 'PRACTICE',
+        expiration: config.expiration || 5,
       });
-      toast.success(`Trade ${signal.direction.toUpperCase()} ejecutado en ${signal.symbol}`);
+      if (!iqConnected) {
+        toast(`${signal.direction.toUpperCase()} ${signal.symbol} — Simulación local (IQ Option no conectado)`, { icon: '🔸' });
+      } else {
+        toast.success(`✅ ${signal.direction.toUpperCase()} ${signal.symbol} ejecutado en IQ Option`);
+      }
       setSignals(signals.filter(s => s !== signal));
-      fetchLiveStatus();
-      refreshTrades();
+      // Sequential: settle first, then read results
+      await pollLiveData();
     } catch (error: any) {
       toast.error(error.message || 'Error al ejecutar');
     }

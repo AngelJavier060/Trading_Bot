@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 import logging
+import os
 from api.routes.trading_routes import trading_bp
 from api.routes.quotex_routes import quotex_bp
 from api.routes.mt5_routes import mt5_bp
@@ -17,16 +18,29 @@ def create_app():
     app = Flask(__name__)
     app.config["SECRET_KEY"] = SECRET_KEY
     
-    # Habilitar CORS — permite cualquier puerto de localhost (dev) y orígenes de producción
+    # Habilitar CORS
+    # - Dev: localhost/127.0.0.1 en cualquier puerto
+    # - Prod: lista explícita en CORS_ORIGINS (separada por comas)
     import re
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"),
-            "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"],
-            "supports_credentials": True
-        }
-    })
+    cors_env = os.environ.get("CORS_ORIGINS", "").strip()
+    allowed_origins: list[str] = []
+    if cors_env:
+        allowed_origins.extend([o.strip() for o in cors_env.split(",") if o.strip()])
+
+    localhost_regex = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
+    origins = allowed_origins if allowed_origins else localhost_regex
+
+    CORS(
+        app,
+        resources={
+            r"/api/*": {
+                "origins": origins,
+                "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+                "allow_headers": ["Content-Type", "Authorization"],
+                "supports_credentials": True,
+            }
+        },
+    )
     
     # Inicializar base de datos
     try:

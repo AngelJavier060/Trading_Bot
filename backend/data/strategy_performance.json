@@ -1,16 +1,16 @@
 {
   "ema_rsi": {
-    "wins": 142,
-    "losses": 20,
-    "total": 162,
-    "total_confidence": 11535.02469808358,
-    "last_updated": "2026-04-22T20:56:59.647663"
+    "wins": 178,
+    "losses": 58,
+    "total": 236,
+    "total_confidence": 16816.011928724358,
+    "last_updated": "2026-04-24T18:59:49.882812"
   },
   "macd": {
     "wins": 1,
     "losses": 0,
     "total": 1,
     "total_confidence": 76.0,
-    "last_updated": "2026-04-22T20:56:59.598855"
+    "last_updated": "2026-04-24T18:59:49.863359"
   }
 }

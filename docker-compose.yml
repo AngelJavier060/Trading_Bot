@@ -30,6 +30,8 @@ services:
       ALLOW_SQLITE_FALLBACK: "false"
       SQL_DEBUG: "false"
       SECRET_KEY: "prod-secret-change-me"
+      # Permitir que el frontend en dominio hable con la API (CORS)
+      CORS_ORIGINS: "https://trading.improvement-solution.com"
     ports:
       # Exponemos el backend en el puerto 5001 del host para no chocar con otros servicios
       - "5001:5000"

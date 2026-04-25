@@ -53,6 +53,9 @@ class LiveTradingController:
                 'amount': data.get('amount', 10),
                 'min_confidence': data.get('min_confidence', 60),
                 'expiration': data.get('expiration', 5),
+                # Risk management
+                'max_concurrent': data.get('max_concurrent', 3),
+                'max_daily_trades': data.get('max_daily_trades', 50),
                 # ML controls
                 'use_ml': data.get('use_ml', True),
                 'ml_weight': data.get('ml_weight', 0.3),

@@ -1,25 +1,22 @@
 [
   {
-    "trade_id": "T1769134619441",
-    "timestamp": "2026-01-22T21:16:59.441450",
-    "symbol": "EURJPY",
-    "direction": "put",
-    "confidence": 75.0,
+    "trade_id": "T1768144998262",
+    "timestamp": "2026-01-11T10:23:18.262686",
+    "symbol": "USDJPY-OTC",
+    "direction": "call",
+    "confidence": 75,
     "strategy": "ema_rsi",
     "indicators": {
-      "ema_fast": 1.1299,
-      "ema_slow": 1.1302,
-      "ema_separation": -0.0296,
-      "rsi": 37.2608,
-      "close": 1.125
+      "rsi": 47.75,
+      "ema_fast": 1.10617,
+      "ema_slow": 1.09643,
+      "macd": 0.0001
     },
     "reasons": [
-      "EMA r\u00e1pida (9) < EMA lenta (21)",
-      "Cruce bajista reciente",
-      "RSI < 50 confirma tendencia bajista"
+      "EMA bullish crossover"
     ],
-    "entry_price": 1.1013304731093383,
-    "exit_price": 1.1018367422998228,
+    "entry_price": 141.078,
+    "exit_price": 1.1020359274511726,
     "pnl": -10.0,
     "analysis": {
       "possible_causes": [
@@ -31,27 +28,983 @@
     }
   },
   {
-    "trade_id": "T1769134667028",
-    "timestamp": "2026-01-22T21:17:47.029007",
+    "trade_id": "T1768145005929",
+    "timestamp": "2026-01-11T10:23:25.929426",
+    "symbol": "EURGBP-OTC",
+    "direction": "call",
+    "confidence": 69.21695811019477,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 20.78,
+      "ema_fast": 1.11405,
+      "ema_slow": 1.11511,
+      "macd": -6e-05
+    },
+    "reasons": [
+      "RSI oversold (20.8)"
+    ],
+    "entry_price": 1.14527,
+    "exit_price": 1.0984686949347664,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145042767",
+    "timestamp": "2026-01-11T10:24:02.767610",
+    "symbol": "EURJPY-OTC",
+    "direction": "call",
+    "confidence": 66,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 69.14,
+      "ema_fast": 1.11167,
+      "ema_slow": 1.10872,
+      "macd": 9e-05
+    },
+    "reasons": [
+      "EMA bullish crossover"
+    ],
+    "entry_price": 146.787,
+    "exit_price": 1.0995892947270265,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145046632",
+    "timestamp": "2026-01-11T10:24:06.632096",
+    "symbol": "EURGBP-OTC",
+    "direction": "call",
+    "confidence": 75,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 39.68,
+      "ema_fast": 1.09903,
+      "ema_slow": 1.11786,
+      "macd": -0.00066
+    },
+    "reasons": [
+      "EMA bearish crossover"
+    ],
+    "entry_price": 1.14346,
+    "exit_price": 1.102615083997375,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145078927",
+    "timestamp": "2026-01-11T10:24:38.927125",
+    "symbol": "EURUSD-OTC",
+    "direction": "put",
+    "confidence": 71,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 52.16,
+      "ema_fast": 1.10754,
+      "ema_slow": 1.08947,
+      "macd": -0.00124
+    },
+    "reasons": [
+      "EMA bullish crossover"
+    ],
+    "entry_price": 1.08638,
+    "exit_price": 1.0994729969620147,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145080899",
+    "timestamp": "2026-01-11T10:24:40.899631",
+    "symbol": "GBPUSD-OTC",
+    "direction": "call",
+    "confidence": 76,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 61.22,
+      "ema_fast": 1.08823,
+      "ema_slow": 1.1059,
+      "macd": -0.00056
+    },
+    "reasons": [
+      "EMA bearish crossover"
+    ],
+    "entry_price": 1.14021,
+    "exit_price": 1.101331546226856,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145082168",
+    "timestamp": "2026-01-11T10:24:42.168117",
+    "symbol": "USDJPY-OTC",
+    "direction": "call",
+    "confidence": 74,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 24.53,
+      "ema_fast": 1.11193,
+      "ema_slow": 1.10189,
+      "macd": 9e-05
+    },
+    "reasons": [
+      "RSI oversold (24.5)",
+      "EMA bullish crossover"
+    ],
+    "entry_price": 141.188,
+    "exit_price": 1.0997224042939806,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145129683",
+    "timestamp": "2026-01-11T10:25:29.683576",
+    "symbol": "NZDUSD-OTC",
+    "direction": "put",
+    "confidence": 66.85671559883494,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 76.86,
+      "ema_fast": 1.08422,
+      "ema_slow": 1.08001,
+      "macd": -0.00188
+    },
+    "reasons": [
+      "RSI overbought (76.9)"
+    ],
+    "entry_price": 1.09425,
+    "exit_price": 1.1004896350887026,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145131452",
+    "timestamp": "2026-01-11T10:25:31.452788",
+    "symbol": "EURGBP-OTC",
+    "direction": "call",
+    "confidence": 70,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 71.0,
+      "ema_fast": 1.09959,
+      "ema_slow": 1.11643,
+      "macd": -0.00153
+    },
+    "reasons": [
+      "RSI overbought (71.0)",
+      "EMA bearish crossover"
+    ],
+    "entry_price": 1.13828,
+    "exit_price": 1.0992538705839048,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "RSI sobrecomprado (71.0) para operaci\u00f3n CALL"
+      ],
+      "recommendations": []
+    }
+  },
+  {
+    "trade_id": "T1768145165978",
+    "timestamp": "2026-01-11T10:26:05.978046",
+    "symbol": "USDJPY-OTC",
+    "direction": "call",
+    "confidence": 76,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 45.42,
+      "ema_fast": 1.11436,
+      "ema_slow": 1.08155,
+      "macd": -0.00144
+    },
+    "reasons": [
+      "EMA bullish crossover"
+    ],
+    "entry_price": 154.876,
+    "exit_price": 1.100555813017229,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145166978",
+    "timestamp": "2026-01-11T10:26:06.978825",
+    "symbol": "AUDUSD-OTC",
+    "direction": "put",
+    "confidence": 70,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 31.48,
+      "ema_fast": 1.10186,
+      "ema_slow": 1.10599,
+      "macd": -9e-05
+    },
+    "reasons": [
+      "EMA bearish crossover"
+    ],
+    "entry_price": 1.09219,
+    "exit_price": 1.099456884713864,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145168993",
+    "timestamp": "2026-01-11T10:26:08.993423",
+    "symbol": "EURJPY-OTC",
+    "direction": "call",
+    "confidence": 66,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 42.48,
+      "ema_fast": 1.09813,
+      "ema_slow": 1.08868,
+      "macd": -6e-05
+    },
+    "reasons": [
+      "EMA bullish crossover"
+    ],
+    "entry_price": 159.577,
+    "exit_price": 1.1022623828088636,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145170824",
+    "timestamp": "2026-01-11T10:26:10.824582",
+    "symbol": "GBPJPY-OTC",
+    "direction": "call",
+    "confidence": 70,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 45.23,
+      "ema_fast": 1.11246,
+      "ema_slow": 1.09991,
+      "macd": -0.00105
+    },
+    "reasons": [
+      "EMA bullish crossover"
+    ],
+    "entry_price": 158.148,
+    "exit_price": 1.1009504566560173,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145207146",
+    "timestamp": "2026-01-11T10:26:47.146086",
+    "symbol": "USDJPY-OTC",
+    "direction": "call",
+    "confidence": 70,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 52.57,
+      "ema_fast": 1.09293,
+      "ema_slow": 1.11244,
+      "macd": 0.00147
+    },
+    "reasons": [
+      "EMA bearish crossover"
+    ],
+    "entry_price": 147.712,
+    "exit_price": 1.0996252624479226,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145214819",
+    "timestamp": "2026-01-11T10:26:54.819327",
+    "symbol": "EURGBP-OTC",
+    "direction": "call",
+    "confidence": 70,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 57.35,
+      "ema_fast": 1.10548,
+      "ema_slow": 1.0887,
+      "macd": -0.00117
+    },
+    "reasons": [
+      "EMA bullish crossover"
+    ],
+    "entry_price": 1.14064,
+    "exit_price": 1.0998667306719356,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145246815",
+    "timestamp": "2026-01-11T10:27:26.815137",
+    "symbol": "EURUSD-OTC",
+    "direction": "call",
+    "confidence": 66,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 33.08,
+      "ema_fast": 1.09564,
+      "ema_slow": 1.1,
+      "macd": -0.00119
+    },
+    "reasons": [
+      "EMA bearish crossover"
+    ],
+    "entry_price": 1.13828,
+    "exit_price": 1.1007675008319477,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145248600",
+    "timestamp": "2026-01-11T10:27:28.600674",
+    "symbol": "GBPUSD-OTC",
+    "direction": "call",
+    "confidence": 66.2046556298166,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 23.8,
+      "ema_fast": 1.08463,
+      "ema_slow": 1.11638,
+      "macd": -0.00183
+    },
+    "reasons": [
+      "RSI oversold (23.8)"
+    ],
+    "entry_price": 1.11121,
+    "exit_price": 1.0996676279559616,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145252653",
+    "timestamp": "2026-01-11T10:27:32.653175",
+    "symbol": "EURJPY-OTC",
+    "direction": "call",
+    "confidence": 77,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 51.69,
+      "ema_fast": 1.09236,
+      "ema_slow": 1.10844,
+      "macd": -0.00125
+    },
+    "reasons": [
+      "EMA bearish crossover"
+    ],
+    "entry_price": 142.296,
+    "exit_price": 1.0996349351764771,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145254505",
+    "timestamp": "2026-01-11T10:27:34.505604",
+    "symbol": "GBPJPY-OTC",
+    "direction": "call",
+    "confidence": 67,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 67.93,
+      "ema_fast": 1.09135,
+      "ema_slow": 1.09094,
+      "macd": 0.00096
+    },
+    "reasons": [
+      "EMA bullish crossover"
+    ],
+    "entry_price": 156.988,
+    "exit_price": 1.1007373872205601,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768145257526",
+    "timestamp": "2026-01-11T10:27:37.526896",
+    "symbol": "EURGBP-OTC",
+    "direction": "put",
+    "confidence": 67,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 65.39,
+      "ema_fast": 1.09552,
+      "ema_slow": 1.11075,
+      "macd": -0.00125
+    },
+    "reasons": [
+      "EMA bearish crossover"
+    ],
+    "entry_price": 1.06482,
+    "exit_price": 1.0987863336449177,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768148164939",
+    "timestamp": "2026-01-11T11:16:04.939341",
+    "symbol": "USDCHF",
+    "direction": "call",
+    "confidence": 75,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 44.32,
+      "ema_fast": 1.10503,
+      "ema_slow": 1.10023,
+      "macd": 0.00064
+    },
+    "reasons": [
+      "EMA bullish crossover"
+    ],
+    "entry_price": 1.12424,
+    "exit_price": 1.1028650763186898,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768148165943",
+    "timestamp": "2026-01-11T11:16:05.943236",
+    "symbol": "EURGBP",
+    "direction": "call",
+    "confidence": 72,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 25.17,
+      "ema_fast": 1.11306,
+      "ema_slow": 1.10078,
+      "macd": -0.00091
+    },
+    "reasons": [
+      "RSI oversold (25.2)",
+      "EMA bullish crossover"
+    ],
+    "entry_price": 1.1112,
+    "exit_price": 1.100442003850074,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768148167952",
+    "timestamp": "2026-01-11T11:16:07.952479",
+    "symbol": "NZDUSD",
+    "direction": "call",
+    "confidence": 74,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 31.62,
+      "ema_fast": 1.09146,
+      "ema_slow": 1.10478,
+      "macd": 0.00013
+    },
+    "reasons": [
+      "EMA bearish crossover"
+    ],
+    "entry_price": 1.13824,
+    "exit_price": 1.0991466872764721,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768148200972",
+    "timestamp": "2026-01-11T11:16:40.972676",
+    "symbol": "USDJPY",
+    "direction": "call",
+    "confidence": 73,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 54.58,
+      "ema_fast": 1.10257,
+      "ema_slow": 1.09604,
+      "macd": -0.00092
+    },
+    "reasons": [
+      "EMA bullish crossover"
+    ],
+    "entry_price": 144.729,
+    "exit_price": 1.1003657559247095,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768148201977",
+    "timestamp": "2026-01-11T11:16:41.977897",
+    "symbol": "AUDUSD",
+    "direction": "put",
+    "confidence": 72,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 25.83,
+      "ema_fast": 1.09657,
+      "ema_slow": 1.11456,
+      "macd": -0.00107
+    },
+    "reasons": [
+      "RSI oversold (25.8)"
+    ],
+    "entry_price": 1.06433,
+    "exit_price": 1.101490896700107,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "RSI sobrevendido (25.8) para operaci\u00f3n PUT"
+      ],
+      "recommendations": []
+    }
+  },
+  {
+    "trade_id": "T1768148241016",
+    "timestamp": "2026-01-11T11:17:21.016221",
+    "symbol": "USDJPY",
+    "direction": "call",
+    "confidence": 65.1552382705267,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 24.84,
+      "ema_fast": 1.09431,
+      "ema_slow": 1.10766,
+      "macd": -0.00019
+    },
+    "reasons": [
+      "RSI oversold (24.8)"
+    ],
+    "entry_price": 159.628,
+    "exit_price": 1.0983445999378636,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768148244022",
+    "timestamp": "2026-01-11T11:17:24.022031",
+    "symbol": "GBPJPY",
+    "direction": "call",
+    "confidence": 78,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 78.96,
+      "ema_fast": 1.09581,
+      "ema_slow": 1.10177,
+      "macd": -0.00033
+    },
+    "reasons": [
+      "RSI overbought (79.0)",
+      "EMA bearish crossover"
+    ],
+    "entry_price": 156.452,
+    "exit_price": 1.0986249991151136,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "RSI sobrecomprado (79.0) para operaci\u00f3n CALL"
+      ],
+      "recommendations": []
+    }
+  },
+  {
+    "trade_id": "T1768148281127",
+    "timestamp": "2026-01-11T11:18:01.127761",
+    "symbol": "USDJPY",
+    "direction": "call",
+    "confidence": 70,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 47.14,
+      "ema_fast": 1.08764,
+      "ema_slow": 1.08721,
+      "macd": -6e-05
+    },
+    "reasons": [
+      "EMA bullish crossover"
+    ],
+    "entry_price": 153.407,
+    "exit_price": 1.100305388458191,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768148284141",
+    "timestamp": "2026-01-11T11:18:04.141370",
+    "symbol": "GBPJPY",
+    "direction": "call",
+    "confidence": 77,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 34.28,
+      "ema_fast": 1.10417,
+      "ema_slow": 1.11196,
+      "macd": 0.00146
+    },
+    "reasons": [
+      "EMA bearish crossover"
+    ],
+    "entry_price": 141.926,
+    "exit_price": 1.0991279940704821,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768148286153",
+    "timestamp": "2026-01-11T11:18:06.153849",
+    "symbol": "EURGBP",
+    "direction": "call",
+    "confidence": 67.56178851015278,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 22.44,
+      "ema_fast": 1.10022,
+      "ema_slow": 1.11444,
+      "macd": -0.00014
+    },
+    "reasons": [
+      "RSI oversold (22.4)"
+    ],
+    "entry_price": 1.14048,
+    "exit_price": 1.099100169987206,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768148288158",
+    "timestamp": "2026-01-11T11:18:08.158365",
+    "symbol": "NZDUSD",
+    "direction": "put",
+    "confidence": 78,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "rsi": 49.89,
+      "ema_fast": 1.08017,
+      "ema_slow": 1.11559,
+      "macd": -0.00115
+    },
+    "reasons": [
+      "EMA bearish crossover"
+    ],
+    "entry_price": 1.09742,
+    "exit_price": 1.1000905796940184,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768171221565",
+    "timestamp": "2026-01-11T17:40:21.565539",
+    "symbol": "AUDUSD",
+    "direction": "call",
+    "confidence": 75.0,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "ema_fast": 1.1604,
+      "ema_slow": 1.1602,
+      "ema_separation": 0.0149,
+      "rsi": 53.2646,
+      "close": 1.164
+    },
+    "reasons": [
+      "EMA r\u00e1pida (9) > EMA lenta (21)",
+      "Cruce alcista reciente",
+      "RSI en zona neutral (40-60)",
+      "RSI > 50 confirma tendencia alcista"
+    ],
+    "entry_price": 1.099755608111231,
+    "exit_price": 1.0992243521806533,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768171320769",
+    "timestamp": "2026-01-11T17:42:00.769849",
+    "symbol": "USDJPY",
+    "direction": "call",
+    "confidence": 75.0,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "ema_fast": 1.116,
+      "ema_slow": 1.1157,
+      "ema_separation": 0.0194,
+      "rsi": 58.3297,
+      "close": 1.1178
+    },
+    "reasons": [
+      "EMA r\u00e1pida (9) > EMA lenta (21)",
+      "Cruce alcista reciente",
+      "RSI en zona neutral (40-60)",
+      "RSI > 50 confirma tendencia alcista"
+    ],
+    "entry_price": 1.100459709538809,
+    "exit_price": 1.1000091659435753,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1768176356274",
+    "timestamp": "2026-01-11T19:05:56.274341",
     "symbol": "EURJPY",
+    "direction": "call",
+    "confidence": 75.0,
+    "strategy": "ema_rsi",
+    "indicators": {
+      "ema_fast": 1.1116,
+      "ema_slow": 1.111,
+      "ema_separation": 0.0531,
+      "rsi": 58.6977,
+      "close": 1.1184
+    },
+    "reasons": [
+      "EMA r\u00e1pida (9) > EMA lenta (21)",
+      "Cruce alcista reciente",
+      "RSI en zona neutral (40-60)",
+      "RSI > 50 confirma tendencia alcista"
+    ],
+    "entry_price": 1.1020147489312866,
+    "exit_price": 1.1020132805795215,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1769135279651",
+    "timestamp": "2026-01-22T21:27:59.651304",
+    "symbol": "EURUSD",
     "direction": "put",
     "confidence": 75.0,
     "strategy": "ema_rsi",
     "indicators": {
-      "ema_fast": 1.1281,
-      "ema_slow": 1.1282,
-      "ema_separation": -0.0068,
-      "rsi": 40.3535,
-      "close": 1.125
+      "ema_fast": 1.1399,
+      "ema_slow": 1.1404,
+      "ema_separation": -0.0371,
+      "rsi": 35.5819,
+      "close": 1.1367
     },
     "reasons": [
       "EMA r\u00e1pida (9) < EMA lenta (21)",
       "Cruce bajista reciente",
-      "RSI en zona neutral (40-60)",
       "RSI < 50 confirma tendencia bajista"
     ],
-    "entry_price": 1.0994175275299318,
-    "exit_price": 1.1001814506194874,
+    "entry_price": 1.098196113211203,
+    "exit_price": 1.10018633464239,
+    "pnl": -10.0,
+    "analysis": {
+      "possible_causes": [
+        "Volatilidad del mercado o movimiento inesperado"
+      ],
+      "recommendations": [
+        "Considerar usar stop-loss m\u00e1s ajustados"
+      ]
+    }
+  },
+  {
+    "trade_id": "T1777073868334",
+    "timestamp": "2026-04-24T18:37:48.334446",
+    "symbol": "EURUSD",
+    "direction": "call",
+    "confidence": 72.0,
+    "strategy": "ema_rsi",
+    "indicators": {},
+    "reasons": [
+      "Signal generated"
+    ],
+    "entry_price": 1.11851,
+    "exit_price": 1.1006682137418398,
     "pnl": -10.0,
     "analysis": {
       "possible_causes": [

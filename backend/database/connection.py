@@ -4,6 +4,7 @@ Configuración y gestión de conexión a MySQL/PostgreSQL/SQLite
 """
 
 import os
+from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
@@ -12,7 +13,8 @@ import logging
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
-load_dotenv()
+_ENV_PATH = Path(__file__).resolve().parents[1] / '.env'
+load_dotenv(dotenv_path=_ENV_PATH)
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +38,16 @@ def get_database_url():
             db_url = db_url.replace('postgres://', 'postgresql://', 1)
         return db_url
 
-    # Construir URL desde variables individuales de PostgreSQL
-    pg_host = os.environ.get('PG_HOST') or os.environ.get('POSTGRES_HOST', 'localhost')
-    pg_port = os.environ.get('PG_PORT') or os.environ.get('POSTGRES_PORT', '5432')
-    pg_user = os.environ.get('PG_USER') or os.environ.get('POSTGRES_USER', 'postgres')
-    pg_password = os.environ.get('PG_PASSWORD') or os.environ.get('POSTGRES_PASSWORD', '')
-    pg_database = os.environ.get('PG_DATABASE') or os.environ.get('POSTGRES_DB', 'trading_bot')
+    # Construir URL desde variables individuales de PostgreSQL.
+    # Importante: NO asumir defaults (localhost/trading_bot), porque eso rompe el arranque
+    # en entornos donde no existe Postgres local. Solo usar Postgres si el usuario lo configuró.
+    pg_host = os.environ.get('PG_HOST') or os.environ.get('POSTGRES_HOST')
+    pg_port = os.environ.get('PG_PORT') or os.environ.get('POSTGRES_PORT') or '5432'
+    pg_user = os.environ.get('PG_USER') or os.environ.get('POSTGRES_USER') or 'postgres'
+    pg_password = os.environ.get('PG_PASSWORD') or os.environ.get('POSTGRES_PASSWORD') or ''
+    pg_database = os.environ.get('PG_DATABASE') or os.environ.get('POSTGRES_DB')
 
-    # Si hay configuración PostgreSQL, usarla (driver pg8000)
+    # Si hay configuración explícita de PostgreSQL, usarla (driver pg8000)
     if pg_host and pg_database:
         if pg_password:
             return f'postgresql+pg8000://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_database}'
@@ -55,7 +59,10 @@ def get_database_url():
         db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'trading_bot.db')
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         return f'sqlite:///{db_path}'
-    raise RuntimeError('No se encontró configuración de base de datos. Defina DATABASE_URL o variables PG_HOST/PG_DATABASE')
+    raise RuntimeError(
+        'No se encontró configuración de base de datos. Defina DATABASE_URL o '
+        'variables PG_HOST/PG_DATABASE (Postgres) o habilite ALLOW_SQLITE_FALLBACK=true (dev).'
+    )
 
 def init_db(app=None):
     """Inicializar la base de datos y crear tablas"""

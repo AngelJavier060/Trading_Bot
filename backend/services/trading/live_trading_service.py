@@ -168,6 +168,8 @@ class LiveTradingService:
         self.trading_mode: str = 'manual'  # 'auto' or 'manual'
         self.min_confidence: float = 60.0
         self.trade_amount: float = 10.0
+        self.max_concurrent_trades: int = 3
+        self.max_daily_trades: int = 50
         # ML controls
         self.ml_enabled: bool = True
         self.ml_weight: float = 0.3
@@ -217,22 +219,26 @@ class LiveTradingService:
         self.ml_enabled = bool(config.get('use_ml', True))
         self.ml_weight = float(config.get('ml_weight', 0.3))
         self.ml_min_probability = float(config.get('ml_min_probability', 0.55))
+        self.max_concurrent_trades = int(config.get('max_concurrent', 3))
+        self.max_daily_trades = int(config.get('max_daily_trades', 50))
         
-        # VALIDATION: Check connection before starting if in auto mode
-        if self.trading_mode == 'auto':
+        # VALIDATION: Check connection before starting if in auto mode with REAL account
+        account_type_upper = str(account_type or '').upper()
+        is_real_account = account_type_upper == 'REAL'
+        if self.trading_mode == 'auto' and is_real_account:
             if platform == 'iqoption':
                 iq = trading_service.get_iq_option()
                 if not iq:
-                    logger.error("Intento de iniciar Auto-Trading sin conexión a IQ Option")
+                    logger.error("Intento de iniciar Auto-Trading REAL sin conexión a IQ Option")
                     return {
                         'status': 'error',
-                        'message': '❌ ERROR CRÍTICO: No conectado a IQ Option. Conecte la plataforma primero antes de activar modo automático.',
+                        'message': '❌ ERROR CRÍTICO: No conectado a IQ Option. Conecte la plataforma primero antes de activar modo automático en cuenta REAL.',
                         'bot_status': self.status.to_dict()
                     }
             elif platform == 'mt5':
                 mt5 = trading_service.get_mt5()
                 if not mt5:
-                     return {
+                    return {
                         'status': 'error',
                         'message': '❌ ERROR CRÍTICO: No conectado a MetaTrader 5. Conecte la plataforma primero.',
                         'bot_status': self.status.to_dict()
@@ -458,6 +464,11 @@ class LiveTradingService:
     
     def get_trade_history(self, limit: int = 50, account_type: Optional[str] = None) -> List[Dict]:
         """Get trade history with optional filtering."""
+        # Settle any due trades before returning history so results are up-to-date
+        try:
+            self._settle_due_trades()
+        except Exception:
+            pass
         try:
             rows = TradeRepository.get_history(limit=limit, account_type=account_type)
             self._sync_db_pending_trades_with_iq(rows)
@@ -474,6 +485,11 @@ class LiveTradingService:
                                    min_conf: Optional[float] = None, max_conf: Optional[float] = None,
                                    platform: Optional[str] = None, strategy: Optional[str] = None) -> List[Dict]:
         """Get filtered trade history."""
+        # Settle any due trades first so results are current
+        try:
+            self._settle_due_trades()
+        except Exception:
+            pass
         db_error = None
         try:
             rows = TradeRepository.get_history(
@@ -492,7 +508,7 @@ class LiveTradingService:
             if max_conf is not None:
                 rows = [r for r in rows if (r.get('confidence_level') or 0) <= max_conf]
             logger.info(f"DB returned {len(rows)} trades (limit={limit}, from={date_from}, to={date_to})")
-            self._sync_db_pending_trades_with_iq(rows)
+            self._sync_db_pending_trades_with_iq(rows)  # noqa: E131
             return [self._map_db_trade_public(r) for r in rows]
         except Exception as e:
             db_error = e
@@ -686,8 +702,9 @@ class LiveTradingService:
 
                 if not checked_with_broker:
                     ext_id = getattr(trade_obj, 'external_id', None)
-                    if ext_id:
-                        # Operación enviada a IQ Option: no inventar resultado localmente
+                    is_simulated = ext_id and str(ext_id).startswith('DEMO-')
+                    if ext_id and not is_simulated:
+                        # Operación real enviada a IQ Option: no inventar resultado localmente
                         logger.warning(
                             f"Sin resultado de IQ para {trade_id} (order_id={ext_id}); se reintenta en el siguiente ciclo"
                         )
@@ -842,6 +859,58 @@ class LiveTradingService:
         
         return analysis
     
+    def _rebuild_pending_settlements(self) -> None:
+        """Re-queue any pending in-memory trades that survived a server reload.
+        Also queries the DB for trades still marked pending.
+        This prevents trades from being stuck 'pending' after a Flask restart.
+        """
+        now = datetime.now()
+        rebuilt = 0
+        seen_ids = {p['id'] for p in self.pending_settlements}
+
+        # 1. Rebuild from in-memory history
+        for trade in self.trade_history:
+            if trade.result == 'pending' and trade.id not in seen_ids:
+                exp_time = trade.timestamp + timedelta(seconds=trade.duration_seconds)
+                # Settle immediately if already overdue, otherwise schedule normally
+                settle_at = exp_time if exp_time > now else now
+                self.pending_settlements.append({
+                    'id': trade.id,
+                    'symbol': trade.symbol,
+                    'settle_at': settle_at,
+                })
+                seen_ids.add(trade.id)
+                rebuilt += 1
+
+        # 2. Check DB for pending trades not in memory (e.g. from a previous process)
+        try:
+            db_pending = TradeRepository.get_history(limit=200, result='pending')
+            for row in db_pending:
+                tid = row.get('trade_id') or row.get('id', '')
+                if not tid or tid in seen_ids:
+                    continue
+                opened = row.get('opened_at') or row.get('timestamp')
+                if not opened:
+                    continue
+                if isinstance(opened, str):
+                    opened = datetime.fromisoformat(opened)
+                exp_min = int(row.get('expiration_minutes') or 5)
+                exp_time = opened + timedelta(minutes=exp_min)
+                settle_at = exp_time if exp_time > now else now
+                symbol = row.get('symbol', 'EURUSD')
+                self.pending_settlements.append({
+                    'id': tid,
+                    'symbol': symbol,
+                    'settle_at': settle_at,
+                })
+                seen_ids.add(tid)
+                rebuilt += 1
+        except Exception as db_err:
+            logger.warning(f"Could not query DB for pending trades on rebuild: {db_err}")
+
+        if rebuilt:
+            logger.info(f"Rebuilt {rebuilt} pending settlement(s) after reload")
+
     def _load_history(self) -> None:
         """Load trade history from file."""
         try:
@@ -854,6 +923,11 @@ class LiveTradingService:
                 logger.info(f"Loaded {len(self.trade_history)} trades from history")
         except Exception as e:
             logger.error(f"Error loading history: {e}")
+        # Rebuild pending settlements from memory + DB after every load/reload
+        try:
+            self._rebuild_pending_settlements()
+        except Exception as e:
+            logger.warning(f"Could not rebuild pending settlements: {e}")
     
     def _save_history(self) -> None:
         """Save trade history to file."""
@@ -1256,6 +1330,9 @@ class LiveTradingService:
         executed_on_broker = False
         broker_error = None
         
+        account_type_upper = str(account_type or '').upper()
+        is_demo = account_type_upper in ('DEMO', 'PRACTICE')
+
         if platform == 'iqoption':
             iq = trading_service.get_iq_option()
             broker_connected = False
@@ -1265,7 +1342,7 @@ class LiveTradingService:
                 broker_connected = False
 
             if broker_connected:
-                # Real or demo with live broker
+                # Broker conectado: ejecutar en plataforma real (demo o real)
                 try:
                     if hasattr(iq, 'is_asset_open'):
                         try:
@@ -1278,16 +1355,24 @@ class LiveTradingService:
                         if check:
                             trade_id_broker = order_id
                             executed_on_broker = True
-                            logger.info(f"✅ Real trade executed on IQ Option: {symbol} {direction} ID:{order_id}")
+                            logger.info(f"✅ Trade executed on IQ Option: {symbol} {direction} ID:{order_id}")
                             self._update_balance()
                         else:
                             broker_error = "Broker rejected trade (Market closed or limit reached)"
                 except Exception as e:
                     broker_error = str(e)
                     logger.error(f"IQ Option execution error: {e}")
+            elif is_demo:
+                # Modo DEMO sin broker conectado: simular la orden localmente
+                trade_id_broker = f"DEMO-{int(time.time() * 1000)}"
+                executed_on_broker = True
+                logger.info(
+                    f"📋 Demo trade simulated (no broker connection): {symbol} {direction} ID:{trade_id_broker}"
+                )
             else:
+                # Cuenta REAL sin broker: bloquear
                 broker_error = (
-                    "IQ Option no conectado. Conecta la cuenta (PRACTICE o REAL) antes de ejecutar operaciones."
+                    "IQ Option no conectado. Conecta la cuenta REAL antes de ejecutar operaciones en cuenta real."
                 )
         elif platform == 'mt5':
             broker_error = "MT5 execution not yet fully implemented via this unified method"
@@ -1325,11 +1410,12 @@ class LiveTradingService:
         
         if trade_id_broker:
             trade.external_id = str(trade_id_broker)
-            # Persistir ID de orden en DB para auditoría y sincronización.
-            try:
-                TradeRepository.set_order_id_platform(trade.id, str(trade_id_broker))
-            except Exception:
-                pass
+            # Solo persistir el ID de orden real en DB; los DEMO-... son órdenes simuladas.
+            if not str(trade_id_broker).startswith('DEMO-'):
+                try:
+                    TradeRepository.set_order_id_platform(trade.id, str(trade_id_broker))
+                except Exception:
+                    pass
         
         self.status.last_trade = trade.to_dict()
         return {
@@ -1346,7 +1432,25 @@ class LiveTradingService:
             if self._stop_event.is_set() or not self.status.is_running or self.trading_mode != 'auto':
                 logger.info("Skipping auto trade: bot not running or not in auto mode")
                 return
-            
+
+            # Risk management: max concurrent trades
+            max_concurrent = getattr(self, 'max_concurrent_trades', 3)
+            current_active = len(self.status.active_trades)
+            if current_active >= max_concurrent:
+                logger.info(f"Skipping auto trade: max concurrent trades reached ({current_active}/{max_concurrent})")
+                return
+
+            # Risk management: max daily trades
+            max_daily = getattr(self, 'max_daily_trades', 50)
+            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            daily_count = sum(
+                1 for t in self.trade_history
+                if t.timestamp >= today_start
+            )
+            if daily_count >= max_daily:
+                logger.info(f"Skipping auto trade: max daily trades reached ({daily_count}/{max_daily})")
+                return
+
             # Extract reasons safely
             reasons_list = []
             for r in signal_data.get('reasons', []):

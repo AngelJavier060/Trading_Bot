@@ -607,6 +607,8 @@ const api = {
     amount?: number;
     min_confidence?: number;
     expiration?: number;
+    max_concurrent?: number;
+    max_daily_trades?: number;
   }) => {
     const response = await fetch(`${BASE_URL}/api/live/start`, {
       method: 'POST',
@@ -657,6 +659,9 @@ const api = {
     indicators?: Record<string, any>;
     reasons?: string[];
     ml_prediction?: any;
+    platform?: string;
+    account_type?: string;
+    expiration?: number;
   }) => {
     const response = await fetch(`${BASE_URL}/api/live/execute`, {
       method: 'POST',

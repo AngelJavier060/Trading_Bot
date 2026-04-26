@@ -6,6 +6,7 @@ from datetime import datetime
 import time
 import json
 import os
+import concurrent.futures
 from services.ai.prediction_service import basic_ema_rsi_signal, basic_ema_rsi_decision
 from services.risk_manager import can_place_trade, register_trade, get_risk_state
 from services.trade_logger import log_trade
@@ -88,13 +89,22 @@ class TradingController:
             iq_instance = IQ_Option(email, credentials.password)
 
             try:
-                result = iq_instance.connect()
-                # connect() puede devolver (bool, reason) o sólo bool según versión
-                if isinstance(result, tuple):
-                    status, reason = result
-                else:
-                    status = bool(result)
-                    reason = None
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(iq_instance.connect)
+                    try:
+                        result = future.result(timeout=30)
+                        if isinstance(result, tuple):
+                            status, reason = result
+                        else:
+                            status = bool(result)
+                            reason = None
+                    except concurrent.futures.TimeoutError:
+                        logging.error("IQ Option connect() timeout después de 30s")
+                        return jsonify({
+                            'status': 'error',
+                            'message': 'La conexión con IQ Option tardó demasiado (>30s). '
+                                       'Verifica tu conexión a internet o intenta nuevamente.'
+                        }), 408
             except Exception as conn_err:
                 logging.error(f"Excepción en iq_instance.connect(): {conn_err}")
                 status = False

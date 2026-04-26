@@ -61,6 +61,17 @@ const AccountConfig: React.FC<AccountConfigProps> = ({
     };
 
     const handleAccountTypeChange = async (newType: string) => {
+        if (newType === 'REAL') {
+            const confirmed = window.confirm(
+                '⚠️ ADVERTENCIA: Está a punto de activar el modo con DINERO REAL.\n\n' +
+                'Solo active esta opción si:\n' +
+                '• El bot fue probado al menos 2 semanas en cuenta Demo\n' +
+                '• Los resultados en Demo fueron consistentemente positivos\n' +
+                '• Entiende que puede perder el dinero invertido\n\n' +
+                '¿Está seguro que desea activar el modo con dinero REAL?'
+            );
+            if (!confirmed) return;
+        }
         setAccountType(newType as 'PRACTICE' | 'REAL');
         if (onAccountTypeChange) {
             await onAccountTypeChange(newType);
@@ -69,7 +80,16 @@ const AccountConfig: React.FC<AccountConfigProps> = ({
 
     return (
         <div className="bg-white shadow-md rounded-lg p-6 w-96">
-            <h3 className="text-xl font-semibold mb-4">Seleccionar Plataforma</h3>
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-semibold">Seleccionar Plataforma</h3>
+                <span className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider ${
+                    accountType === 'REAL'
+                        ? 'bg-red-100 text-red-700 border border-red-400 animate-pulse'
+                        : 'bg-green-100 text-green-700 border border-green-400'
+                }`}>
+                    {accountType === 'REAL' ? '🔴 REAL' : '🟢 DEMO'}
+                </span>
+            </div>
             
             <div className="grid grid-cols-3 gap-4 mb-6">
                 {SUPPORTED_PLATFORMS.map(platform => (
@@ -103,11 +123,19 @@ const AccountConfig: React.FC<AccountConfigProps> = ({
                         <select
                             value={accountType}
                             onChange={(e) => handleAccountTypeChange(e.target.value)}
-                            className="w-full border rounded p-2"
+                            className={`w-full border rounded p-2 font-bold ${
+                                accountType === 'REAL' ? 'border-red-500 text-red-700 bg-red-50' : 'border-gray-300'
+                            }`}
                         >
-                            <option value="PRACTICE">Práctica</option>
-                            <option value="REAL">Real</option>
+                            <option value="PRACTICE">🟢 Demo (Práctica)</option>
+                            <option value="REAL">🔴 Real (Dinero Real)</option>
                         </select>
+                        {accountType === 'REAL' && (
+                            <div className="mt-2 p-3 bg-red-50 border border-red-400 rounded text-sm text-red-700">
+                                <strong>⚠️ MODO REAL ACTIVO</strong> — Las operaciones usarán dinero real.
+                                Asegúrese de haber probado el bot en Demo durante al menos 2 semanas.
+                            </div>
+                        )}
                     </div>
                     
                     <div className="space-y-4">

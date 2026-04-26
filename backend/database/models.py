@@ -245,9 +245,16 @@ class Strategy(Base):
     exit_rules = Column(JSON, nullable=True)
     
     # Parámetros de riesgo
-    min_confidence = Column(Float, default=60.0)
+    min_confidence = Column(Float, default=68.0)
     max_risk_per_trade = Column(Float, default=2.0)
-    
+
+    # Tipo de mercado permitido: 'otc', 'real' o 'both'.
+    # Ej: Ichimoku se restringe a 'real' para evitar OTC corto plazo (5m).
+    allowed_market_type = Column(String(8), default='both')
+
+    # Timeframe recomendado para mostrar en UI ('1m', '5m', '15m', etc.)
+    recommended_timeframe = Column(String(8), nullable=True)
+
     # Timeframes permitidos
     allowed_timeframes = Column(JSON, default=['5m', '15m'])
     
@@ -295,6 +302,8 @@ class Strategy(Base):
             'exit_rules': self.exit_rules,
             'min_confidence': self.min_confidence,
             'allowed_timeframes': self.allowed_timeframes,
+            'allowed_market_type': self.allowed_market_type or 'both',
+            'recommended_timeframe': self.recommended_timeframe,
             'total_trades': self.total_trades,
             'win_rate': self.win_rate,
             'total_profit': self.total_profit,
@@ -439,8 +448,15 @@ class RobotConfig(Base):
     
     # ML Settings
     use_ml_predictions = Column(Boolean, default=True)
-    ml_min_confidence = Column(Float, default=65.0)
-    
+    ml_min_confidence = Column(Float, default=68.0)
+    ml_weight = Column(Float, default=0.20)
+
+    # Configuración extendida: cualquier campo no mapeado a columnas se guarda aquí.
+    # Permite persistir min_confidence, ml_weight, daily_profit_target,
+    # daily_loss_limit, volatility_filter_enabled, news_filter_enabled,
+    # parámetros por estrategia, sesiones de mercado activas, etc.
+    extra_config = Column(JSON, nullable=True)
+
     # Estado
     is_active = Column(Boolean, default=True)
     last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -459,9 +475,17 @@ class RobotConfig(Base):
             'analysis_interval_seconds': self.analysis_interval_seconds,
             'risk_level': self.risk_level,
             'max_daily_trades': self.max_daily_trades,
+            'max_daily_loss': self.max_daily_loss,
+            'stop_on_loss_streak': self.stop_on_loss_streak,
             'default_timeframe': self.default_timeframe,
+            'allowed_timeframes': self.allowed_timeframes,
+            'default_expiration': self.default_expiration,
             'use_ml_predictions': self.use_ml_predictions,
+            'ml_min_confidence': self.ml_min_confidence,
+            'ml_weight': self.ml_weight,
+            'extra_config': self.extra_config or {},
             'is_active': self.is_active,
+            'last_updated': self.last_updated.isoformat() if self.last_updated else None,
         }
 
 

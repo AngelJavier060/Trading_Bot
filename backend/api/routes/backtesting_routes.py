@@ -70,6 +70,12 @@ def get_symbols():
     return backtesting_controller.get_symbols()
 
 
+@backtesting_bp.route('/summary', methods=['GET'])
+def get_strategy_summary():
+    """Resumen rápido de backtesting de una estrategia (UI gating)."""
+    return backtesting_controller.get_strategy_summary()
+
+
 @backtesting_bp.route('/test', methods=['GET'])
 def test():
     """Test route."""

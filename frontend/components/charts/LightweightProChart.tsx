@@ -47,6 +47,8 @@ export interface TradeMarker {
   sl?: number;
   tp?: number;
   label?: string;
+  /** 0..100 confidence percentage; rendered next to the marker arrow when present */
+  confidence?: number;
 }
 
 interface LightweightProChartProps {
@@ -85,6 +87,15 @@ interface LightweightProChartProps {
   rsiDivLookback?: number;
   // Overlays
   trades?: TradeMarker[];
+  // Session bands: colored vertical ranges drawn over the chart background
+  sessionBands?: Array<{
+    from: UTCTime;   // epoch seconds (UTC)
+    to: UTCTime;
+    color: string;   // e.g. 'rgba(59,130,246,0.12)'
+    label?: string;
+  }>;
+  /** Visual theme. 'light' uses a clean white background to fit the bento dashboard. */
+  theme?: 'light' | 'dark';
 }
 
 // Utils
@@ -180,7 +191,29 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
   showRSIDivergence = false,
   rsiDivLookback = 80,
   trades = [],
+  sessionBands = [],
+  theme = 'dark',
 }) => {
+  // Theme palette (computed once per render)
+  const palette = theme === 'light'
+    ? {
+        bg: '#ffffff',
+        bgRsi: '#fafafa',
+        text: '#1f2937',
+        grid: '#eef0f4',
+        scaleBorder: '#e5e7eb',
+        candleUp: '#16a34a',
+        candleDown: '#ef4444',
+      }
+    : {
+        bg: '#0f172a',
+        bgRsi: '#0b1220',
+        text: '#cbd5e1',
+        grid: '#1e293b',
+        scaleBorder: '#334155',
+        candleUp: '#26a69a',
+        candleDown: '#ef5350',
+      };
   const containerRef = useRef<HTMLDivElement>(null);
   const rsiContainerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -198,9 +231,15 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
   const macdLineRef = useRef<ISeriesApi<'Line'>>();
   const macdSignalRef = useRef<ISeriesApi<'Line'>>();
   const macdHistRef = useRef<ISeriesApi<'Histogram'>>();
+  /** Refs to TP/SL/Entry price lines so we can clear them when trades update. */
+  const tradeLinesRef = useRef<any[]>([]);
   const [data, setData] = useState<CandlestickData<Time>[]>([]);
   const [dataHint, setDataHint] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  // Pixel rects for session band overlay
+  const [bandRects, setBandRects] = useState<Array<{
+    left: number; width: number; color: string; label?: string; key: string;
+  }>>([]);
 
   const effectiveHeight = isExpanded ? Math.max(height * 2.5, 900) : height;
   const mainH = Math.floor(effectiveHeight * 0.72);
@@ -319,10 +358,10 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
   useEffect(() => {
     if (!containerRef.current) return;
     const chart = createChart(containerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: '#0f172a' }, textColor: '#cbd5e1' },
-      grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
-      rightPriceScale: { borderColor: '#334155' },
-      timeScale: { borderColor: '#334155', rightOffset: 5 },
+      layout: { background: { type: ColorType.Solid, color: palette.bg }, textColor: palette.text },
+      grid: { vertLines: { color: palette.grid }, horzLines: { color: palette.grid } },
+      rightPriceScale: { borderColor: palette.scaleBorder },
+      timeScale: { borderColor: palette.scaleBorder, rightOffset: 5 },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true } },
       width: containerRef.current.clientWidth,
@@ -330,7 +369,9 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
     });
     chartRef.current = chart;
     const candleSeries = chart.addCandlestickSeries({
-      upColor: '#26a69a', downColor: '#ef5350', wickUpColor: '#26a69a', wickDownColor: '#ef5350', borderVisible: false,
+      upColor: palette.candleUp, downColor: palette.candleDown,
+      wickUpColor: palette.candleUp, wickDownColor: palette.candleDown,
+      borderVisible: false,
     });
     candleSeriesRef.current = candleSeries;
     if (showEMA) {
@@ -343,10 +384,10 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
     const rsiContainer = rsiContainerRef.current;
     if (rsiContainer) {
       const rsiChart = createChart(rsiContainer, {
-        layout: { background: { type: ColorType.Solid, color: '#0b1220' }, textColor: '#cbd5e1' },
-        grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
-        rightPriceScale: { borderColor: '#334155' },
-        timeScale: { borderColor: '#334155', rightOffset: 5 },
+        layout: { background: { type: ColorType.Solid, color: palette.bgRsi }, textColor: palette.text },
+        grid: { vertLines: { color: palette.grid }, horzLines: { color: palette.grid } },
+        rightPriceScale: { borderColor: palette.scaleBorder },
+        timeScale: { borderColor: palette.scaleBorder, rightOffset: 5 },
         handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
         handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true } },
         width: rsiContainer.clientWidth,
@@ -428,17 +469,91 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
     // Markers from trades - ensure sorted by time ascending
     const tradeMarkers = (trades && trades.length > 0) ? trades
       .filter(t => t && typeof t.time === 'number' && Number.isFinite(t.time))
-      .map(t => ({
-        time: t.time as Time,
-        position: t.direction === 'call' ? 'belowBar' : 'aboveBar',
-        color: t.direction === 'call' ? '#22c55e' : '#ef4444',
-        shape: t.direction === 'call' ? 'arrowUp' : 'arrowDown',
-        text: t.label || t.direction.toUpperCase(),
-      } as any))
+      .map(t => {
+        const conf = typeof t.confidence === 'number' && t.confidence > 0
+          ? ` ${Math.round(t.confidence)}%`
+          : '';
+        const baseLabel = (t.label && t.label.length > 0) ? t.label : t.direction.toUpperCase();
+        return {
+          time: t.time as Time,
+          position: t.direction === 'call' ? 'belowBar' : 'aboveBar',
+          color: t.direction === 'call' ? '#16a34a' : '#dc2626',
+          shape: t.direction === 'call' ? 'arrowUp' : 'arrowDown',
+          text: `${baseLabel}${conf}`,
+          size: 1.5,
+        } as any;
+      })
       .sort((a, b) => (a.time as number) - (b.time as number)) : [];
     // Store sorted trade markers for later combination with divergence markers
     (candleSeriesRef.current as any)._pendingTradeMarkers = tradeMarkers;
   }, [data, trades]);
+
+  // Price lines for trade entry / TP / SL — redrawn whenever the trades prop changes
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+    // Clear previously drawn lines
+    try {
+      tradeLinesRef.current.forEach(line => {
+        try { series.removePriceLine(line); } catch {}
+      });
+    } catch {}
+    tradeLinesRef.current = [];
+    if (!trades || trades.length === 0) return;
+    // Only show lines for the most recent ~5 trades to avoid clutter
+    const subset = trades.slice(-5);
+    for (const t of subset) {
+      if (!t || typeof t.price !== 'number' || !Number.isFinite(t.price)) continue;
+      const isCall = t.direction === 'call';
+      const dirLabel = isCall ? 'BUY' : 'SELL';
+      try {
+        const entry = series.createPriceLine({
+          price: t.price,
+          color: isCall ? '#16a34a' : '#dc2626',
+          lineWidth: 2 as any,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: `${dirLabel} ${t.price}`,
+        });
+        tradeLinesRef.current.push(entry);
+      } catch (e) { /* swallow */ }
+      if (typeof t.tp === 'number' && Number.isFinite(t.tp)) {
+        try {
+          const tp = series.createPriceLine({
+            price: t.tp,
+            color: '#22c55e',
+            lineWidth: 1 as any,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: `TP ${t.tp}`,
+          });
+          tradeLinesRef.current.push(tp);
+        } catch {}
+      }
+      if (typeof t.sl === 'number' && Number.isFinite(t.sl)) {
+        try {
+          const sl = series.createPriceLine({
+            price: t.sl,
+            color: '#ef4444',
+            lineWidth: 1 as any,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: `SL ${t.sl}`,
+          });
+          tradeLinesRef.current.push(sl);
+        } catch {}
+      }
+    }
+    return () => {
+      // Cleanup is also done at the start of the effect, but defend on unmount
+      try {
+        tradeLinesRef.current.forEach(line => {
+          try { series.removePriceLine(line); } catch {}
+        });
+        tradeLinesRef.current = [];
+      } catch {}
+    };
+  }, [trades]);
 
   useEffect(() => {
     if (showEMA && emaSeriesRef.current) {
@@ -610,6 +725,51 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
     }
   }, [showRSIDivergence, showRSI, rsiData, data, trades, rsiDivLookback]);
 
+  // ── Session band overlay ────────────────────────────────────────────────────
+  const computeBands = useCallback(() => {
+    const chart = chartRef.current;
+    const container = containerRef.current;
+    if (!chart || !container || !sessionBands || sessionBands.length === 0) {
+      setBandRects([]);
+      return;
+    }
+    const containerWidth = container.clientWidth;
+    const rects: typeof bandRects = [];
+    for (const band of sessionBands) {
+      try {
+        const x1 = chart.timeScale().timeToCoordinate(band.from as Time);
+        const x2 = chart.timeScale().timeToCoordinate(band.to as Time);
+        if (x1 === null || x2 === null) continue;
+        const left = Math.min(x1, x2);
+        const right = Math.max(x1, x2);
+        // Clip to visible area
+        const clippedLeft = Math.max(0, left);
+        const clippedRight = Math.min(containerWidth, right);
+        if (clippedRight <= clippedLeft) continue;
+        rects.push({
+          left: clippedLeft,
+          width: clippedRight - clippedLeft,
+          color: band.color,
+          label: band.label,
+          key: `${band.from}-${band.to}`,
+        });
+      } catch {
+        // timeToCoordinate may fail if time is out of range
+      }
+    }
+    setBandRects(rects);
+  }, [sessionBands]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    computeBands();
+    const handler = () => { computeBands(); };
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handler);
+    return () => { try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(handler); } catch {} };
+  }, [computeBands, data]);
+  // ────────────────────────────────────────────────────────────────────────────
+
   const btnClass = 'p-1 rounded hover:bg-slate-600 text-slate-400 hover:text-white transition-colors';
   const divider = <div className="w-px h-4 bg-slate-600 mx-0.5" />;
 
@@ -648,6 +808,29 @@ const LightweightProChart: React.FC<LightweightProChartProps> = ({
 
       {/* Chart panes */}
       <div ref={containerRef} className="relative" style={{ height: mainH }}>
+        {/* Session band overlays — rendered behind candles, pointer-events: none */}
+        {bandRects.map(rect => (
+          <div
+            key={rect.key}
+            className="absolute top-0 pointer-events-none"
+            style={{
+              left: rect.left,
+              width: rect.width,
+              height: '100%',
+              background: rect.color,
+              zIndex: 1,
+            }}
+          >
+            {rect.label && (
+              <span
+                className="absolute top-1 text-[9px] font-semibold select-none whitespace-nowrap px-0.5"
+                style={{ color: rect.color.replace(/[\d.]+\)$/, '0.8)'), writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+              >
+                {rect.label}
+              </span>
+            )}
+          </div>
+        ))}
         {dataHint && data.length === 0 && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/85 px-4 text-center text-xs text-slate-300 pointer-events-none">
             {dataHint}

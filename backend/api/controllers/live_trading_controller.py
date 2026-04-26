@@ -45,21 +45,45 @@ class LiveTradingController:
             platform = data.get('platform', 'iqoption')
             account_type = data.get('account_type', 'PRACTICE')
             
-            # Build config from request parameters
+            # Validate min_confidence range [60, 95] before forwarding.
+            try:
+                requested_min_conf = float(data.get('min_confidence', 68))
+            except (TypeError, ValueError):
+                requested_min_conf = 68.0
+            if not (60.0 <= requested_min_conf <= 95.0):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'min_confidence debe estar entre 60 y 95'
+                }), 400
+
+            # Build config from request parameters.
+            # Defaults aligned with "Mejoras al motor de estrategias":
+            #   min_confidence=68 (Etapa inicial), ml_weight=0.20 (Etapa 1)
             config = {
                 'mode': data.get('mode', 'manual'),
                 'symbols': data.get('symbols', ['EURUSD', 'GBPUSD', 'USDJPY']),
                 'strategies': data.get('strategies', []),  # empty → auto-select best
                 'amount': data.get('amount', 10),
-                'min_confidence': data.get('min_confidence', 60),
+                'min_confidence': requested_min_conf,
                 'expiration': data.get('expiration', 5),
                 # Risk management
                 'max_concurrent': data.get('max_concurrent', 3),
                 'max_daily_trades': data.get('max_daily_trades', 50),
                 # ML controls
                 'use_ml': data.get('use_ml', True),
-                'ml_weight': data.get('ml_weight', 0.3),
-                'ml_min_probability': data.get('ml_min_probability', 0.55)
+                'ml_weight': data.get('ml_weight', 0.20),
+                'ml_min_probability': data.get('ml_min_probability', 0.55),
+                # Forward extended risk / filter config (consumed by the engine)
+                'max_consecutive_losses': data.get('max_consecutive_losses', 3),
+                'loss_streak_pause_minutes': data.get('loss_streak_pause_minutes', 30),
+                'reset_streak_on_win': data.get('reset_streak_on_win', True),
+                'daily_profit_target_type': data.get('daily_profit_target_type', 'percent'),
+                'daily_profit_target': data.get('daily_profit_target', 15),
+                'daily_loss_limit_type': data.get('daily_loss_limit_type', 'percent'),
+                'daily_loss_limit': data.get('daily_loss_limit', 10),
+                'volatility_filter_enabled': data.get('volatility_filter_enabled', True),
+                'atr_min_threshold': data.get('atr_min_threshold', 0.03),
+                'news_filter_enabled': data.get('news_filter_enabled', True),
             }
             
             result = self.trading_service.start_bot(platform, account_type, config)
@@ -569,6 +593,55 @@ class LiveTradingController:
         try:
             return jsonify({'status': 'success', 'trainer': auto_trainer.get_status()})
         except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    def get_ignored_signals(self):
+        """Devuelve las señales recientes ignoradas por el motor."""
+        try:
+            limit = int(request.args.get('limit', 50))
+            items = self.trading_service.get_ignored_signals(limit=limit)
+            return jsonify({'status': 'success', 'items': items, 'total': len(items)})
+        except Exception as e:
+            logger.error(f"Error get_ignored_signals: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    def get_daily_progress(self):
+        """Snapshot del progreso diario (objetivo / límite / racha)."""
+        try:
+            return jsonify({'status': 'success', 'progress': self.trading_service.get_daily_progress()})
+        except Exception as e:
+            logger.error(f"Error get_daily_progress: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    def reset_daily_counters(self):
+        """Reinicia contadores diarios manualmente."""
+        try:
+            return jsonify({'status': 'success', 'progress': self.trading_service.reset_daily_counters()})
+        except Exception as e:
+            logger.error(f"Error reset_daily_counters: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    def test_telegram(self):
+        """Envía mensaje de prueba al chat de Telegram configurado."""
+        try:
+            from services.notifications.telegram_service import telegram_service
+            data = request.get_json(silent=True) or {}
+            token = data.get('token')
+            chat_id = data.get('chat_id')
+            if token or chat_id:
+                telegram_service.configure(token=token, chat_id=chat_id)
+            if not telegram_service.enabled:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Telegram no configurado. Define TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID.'
+                }), 400
+            telegram_service.send(
+                "✅ <b>Bot de Trading</b>\nNotificación de prueba enviada correctamente.",
+                stop_type='test',
+            )
+            return jsonify({'status': 'success', 'enabled': True})
+        except Exception as e:
+            logger.error(f"Error test_telegram: {e}")
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
     def debug_buy(self):

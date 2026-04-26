@@ -308,6 +308,58 @@ class MT5DataProvider(DataProvider):
         except:
             return False
     
+    def _resolve_symbol(self, symbol: str) -> Optional[str]:
+        """Find a tradable MT5 symbol, accounting for broker-specific suffixes.
+
+        Many brokers list metals/indices/crypto under variants like 'XAUUSDm',
+        'US30Cash', 'BTCUSD.b', etc. We try the requested name first, then a
+        few common suffixes, and finally a fuzzy lookup over `symbols_get()`.
+        """
+        if not self.mt5:
+            return None
+
+        candidates: List[str] = [symbol]
+        # Try uppercase and a few common broker suffix variants.
+        s = symbol.upper()
+        for suf in ('', 'm', '.s', '.b', '.r', '.a', '.cash', 'Cash', '#', '.', '_'):
+            v = f"{s}{suf}"
+            if v not in candidates:
+                candidates.append(v)
+        # If symbol contains a separator, also try without it.
+        clean = s.replace('/', '').replace('-', '').replace('.', '')
+        if clean not in candidates:
+            candidates.append(clean)
+
+        for cand in candidates:
+            try:
+                info = self.mt5.symbol_info(cand)
+                if info is None:
+                    continue
+                if not info.visible:
+                    self.mt5.symbol_select(cand, True)
+                return cand
+            except Exception:
+                continue
+
+        # Fallback: scan all symbols once and look for a partial match.
+        try:
+            all_syms = self.mt5.symbols_get() or []
+            for s_info in all_syms:
+                name = getattr(s_info, 'name', '')
+                if not name:
+                    continue
+                upper = name.upper()
+                if upper.startswith(s) or upper.startswith(clean):
+                    try:
+                        if not getattr(s_info, 'visible', False):
+                            self.mt5.symbol_select(name, True)
+                    except Exception:
+                        pass
+                    return name
+        except Exception:
+            pass
+        return None
+
     def get_candles(
         self, 
         symbol: str, 
@@ -321,13 +373,19 @@ class MT5DataProvider(DataProvider):
         
         try:
             tf = self.TIMEFRAMES.get(timeframe, 5)
-            
+            resolved = self._resolve_symbol(symbol) or symbol
+
             if end_time:
-                rates = self.mt5.copy_rates_from(symbol, tf, end_time, count)
+                rates = self.mt5.copy_rates_from(resolved, tf, end_time, count)
             else:
-                rates = self.mt5.copy_rates_from_pos(symbol, tf, 0, count)
+                rates = self.mt5.copy_rates_from_pos(resolved, tf, 0, count)
             
             if rates is None or len(rates) == 0:
+                logger.warning(
+                    "MT5: sin velas para %s (resolved=%s, tf=%s). "
+                    "Verifica que el símbolo esté en MarketWatch.",
+                    symbol, resolved, timeframe,
+                )
                 return pd.DataFrame()
             
             df = pd.DataFrame(rates)

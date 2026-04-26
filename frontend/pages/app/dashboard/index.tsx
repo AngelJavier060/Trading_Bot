@@ -106,7 +106,7 @@ export default function Dashboard() {
             {/* Header */}
             <header className="bg-white shadow-sm border-b">
                 <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                         <h1 className="text-2xl font-bold text-gray-800">🤖 Trading Bot IA</h1>
                         <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                             state.isConnected 
@@ -115,19 +115,35 @@ export default function Dashboard() {
                         }`}>
                             {state.isConnected ? '● Conectado' : '○ Desconectado'}
                         </span>
+                        {/* Persistent DEMO/REAL badge */}
+                        {state.accountInfo && (
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold tracking-widest border ${
+                                state.accountInfo.account_type === 'REAL'
+                                    ? 'bg-red-100 text-red-700 border-red-400 animate-pulse'
+                                    : 'bg-emerald-100 text-emerald-700 border-emerald-400'
+                            }`}>
+                                {state.accountInfo.account_type === 'REAL' ? '🔴 DINERO REAL' : '🟢 DEMO'}
+                            </span>
+                        )}
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         {state.isConnected && (
                             <button
                                 onClick={handleDisconnect}
-                                className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             >
                                 Desconectar
                             </button>
                         )}
                         <button
+                            onClick={() => navigateTo('/app/dashboard/configuration/risk-manager')}
+                            className="px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                            🛡️ Risk Manager
+                        </button>
+                        <button
                             onClick={() => navigateTo('/app/dashboard/configuration')}
-                            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                         >
                             ⚙️ Configuración
                         </button>
@@ -140,14 +156,18 @@ export default function Dashboard() {
                 {state.accountInfo && (
                     <div className="bg-white rounded-xl shadow-md p-6 mb-6">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div className="text-center p-4 bg-blue-50 rounded-lg">
-                                <p className="text-xs text-gray-500 uppercase mb-1">Tipo de Cuenta</p>
+                            <div className={`text-center p-4 rounded-lg border-2 ${
+                                state.accountInfo.account_type === 'REAL'
+                                    ? 'bg-red-50 border-red-400'
+                                    : 'bg-emerald-50 border-emerald-400'
+                            }`}>
+                                <p className="text-xs text-gray-500 uppercase mb-1">Modo</p>
                                 <p className={`text-xl font-bold ${
-                                    state.accountInfo.account_type === 'REAL' 
-                                        ? 'text-green-600' 
-                                        : 'text-blue-600'
+                                    state.accountInfo.account_type === 'REAL'
+                                        ? 'text-red-600'
+                                        : 'text-emerald-600'
                                 }`}>
-                                    {state.accountInfo.account_type}
+                                    {state.accountInfo.account_type === 'REAL' ? '🔴 REAL' : '🟢 DEMO'}
                                 </p>
                             </div>
                             <div className="text-center p-4 bg-green-50 rounded-lg">
@@ -238,6 +258,15 @@ export default function Dashboard() {
                         <span className="text-3xl mb-2 block">⚙️</span>
                         <span className="font-bold">Configuración</span>
                         <p className="text-xs text-gray-100 mt-1">Ajustes del sistema</p>
+                    </button>
+                    
+                    <button
+                        onClick={() => navigateTo('/app/dashboard/configuration/risk-manager')}
+                        className="p-6 bg-gradient-to-br from-red-600 to-red-700 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
+                    >
+                        <span className="text-3xl mb-2 block">🛡️</span>
+                        <span className="font-bold">Risk Manager</span>
+                        <p className="text-xs text-red-200 mt-1">Protección de cuenta</p>
                     </button>
                     
                     <button

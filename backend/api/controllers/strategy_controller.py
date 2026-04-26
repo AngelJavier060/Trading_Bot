@@ -239,19 +239,49 @@ class ConfigController:
             return jsonify({'status': 'error', 'message': str(e)}), 500
     
     def save_robot_config(self):
-        """Guardar configuración del robot."""
+        """Guardar configuración del robot.
+
+        Normaliza el payload del frontend: valida min_confidence y mantiene
+        cualquier campo adicional (estrategias custom, sesiones, stops) en
+        ``extra_config`` para no perder datos.
+        """
         try:
             data = request.get_json()
-            
+
             if not data:
                 return jsonify({
                     'status': 'error',
                     'message': 'Datos de configuración requeridos'
                 }), 400
-            
+
+            # ── Validaciones críticas ────────────────────────────────────────
+            if 'min_confidence' in data:
+                try:
+                    mc = float(data['min_confidence'])
+                except (TypeError, ValueError):
+                    return jsonify({'status': 'error', 'message': 'min_confidence inválido'}), 400
+                if not (60.0 <= mc <= 95.0):
+                    return jsonify({
+                        'status': 'error',
+                        'message': 'min_confidence debe estar entre 60 y 95'
+                    }), 400
+                data['min_confidence'] = mc
+
+            if 'ml_weight' in data:
+                try:
+                    mw = float(data['ml_weight'])
+                except (TypeError, ValueError):
+                    return jsonify({'status': 'error', 'message': 'ml_weight inválido'}), 400
+                if not (0.0 <= mw <= 0.5):
+                    return jsonify({
+                        'status': 'error',
+                        'message': 'ml_weight debe estar entre 0.0 y 0.5'
+                    }), 400
+                data['ml_weight'] = mw
+
             config_name = data.pop('config_name', 'default')
             config = trading_db.save_robot_config(data, config_name)
-            
+
             return jsonify({
                 'status': 'success',
                 'message': 'Configuración guardada exitosamente',

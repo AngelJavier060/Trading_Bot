@@ -16,11 +16,8 @@ except ImportError:
     MT5_AVAILABLE = False
     logging.warning("MetaTrader5 module not installed - MT5 features will be disabled")
 
-# Ejemplo de configuración para Admiral Markets
-ADMIRAL_SERVERS = {
-    'demo': 'AdmiralMarkets-Demo',
-    'real': 'AdmiralMarkets-Live'
-}
+# No hay servidor predeterminado — el broker lo aporta el usuario en cada conexión.
+# Ejemplos comunes: 'AdmiralsSC-Demo', 'ICMarkets-Demo02', 'Pepperstone-Demo', etc.
 
 class MT5Controller:
     def __init__(self):
@@ -47,16 +44,21 @@ class MT5Controller:
             if login is None or not password:
                 return jsonify({'error': 'Credenciales incompletas (login y password requeridos)'}), 400
 
-            if credentials.server:
-                server = credentials.server
-            else:
-                server = ADMIRAL_SERVERS['demo'] if is_demo else ADMIRAL_SERVERS['real']
+            if not credentials.server:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'El campo "server" es obligatorio. Consulta el nombre exacto del servidor en tu terminal MT5 (Herramientas → Opciones → Servidor).'
+                }), 400
+            server = credentials.server
             
             logging.info(f"MT5 connecting to server: {server} with login: {login}")
             
+            import glob
+
             initialized = mt5.initialize()
             attempted_paths = []
-            
+
+            # 1) Try user-supplied path first
             if not initialized and credentials.terminal_path and os.path.exists(credentials.terminal_path):
                 attempted_paths.append(credentials.terminal_path)
                 try:
@@ -65,14 +67,32 @@ class MT5Controller:
                         logging.info(f"MT5 initialized using custom terminal at: {credentials.terminal_path}")
                 except Exception:
                     pass
-            
+
+            # 2) Try known broker paths
             if not initialized:
                 common_paths = [
-                    r"C:\\Program Files\\MetaTrader 5\\terminal64.exe",
-                    r"C:\\Program Files (x86)\\MetaTrader 5\\terminal64.exe",
-                    r"C:\\Program Files\\Admiral Markets MetaTrader 5\\terminal64.exe",
-                    r"C:\\Program Files\\Admirals MetaTrader 5\\terminal64.exe",
-                    r"C:\\Program Files\\Admiral Markets MT5\\terminal64.exe",
+                    # Generic
+                    r"C:\Program Files\MetaTrader 5\terminal64.exe",
+                    r"C:\Program Files (x86)\MetaTrader 5\terminal64.exe",
+                    # Pepperstone
+                    r"C:\Program Files\Pepperstone MetaTrader 5\terminal64.exe",
+                    r"C:\Program Files\Pepperstone MT5\terminal64.exe",
+                    r"C:\Program Files (x86)\Pepperstone MetaTrader 5\terminal64.exe",
+                    # Admirals / Admiral Markets
+                    r"C:\Program Files\Admirals MetaTrader 5\terminal64.exe",
+                    r"C:\Program Files\Admiral Markets MetaTrader 5\terminal64.exe",
+                    r"C:\Program Files\Admiral Markets MT5\terminal64.exe",
+                    # IC Markets
+                    r"C:\Program Files\ICMarkets MetaTrader 5\terminal64.exe",
+                    r"C:\Program Files\IC Markets MetaTrader 5\terminal64.exe",
+                    # XM
+                    r"C:\Program Files\XM Global MT5\terminal64.exe",
+                    r"C:\Program Files\XM MT5\terminal64.exe",
+                    # FTMO
+                    r"C:\Program Files\FTMO MetaTrader 5\terminal64.exe",
+                    # Others
+                    r"C:\Program Files\Exness MT5\terminal64.exe",
+                    r"C:\Program Files\HFM MetaTrader 5\terminal64.exe",
                 ]
                 for path in common_paths:
                     if os.path.exists(path):
@@ -84,26 +104,95 @@ class MT5Controller:
                                 break
                         except Exception:
                             pass
-            
+
+            # 3) Glob scan across all Program Files subfolders
+            if not initialized:
+                for search_root in [
+                    r"C:\Program Files",
+                    r"C:\Program Files (x86)",
+                ]:
+                    pattern = os.path.join(search_root, "*MetaTrader*", "terminal64.exe")
+                    for found in glob.glob(pattern, recursive=False):
+                        if found in attempted_paths:
+                            continue
+                        attempted_paths.append(found)
+                        try:
+                            if mt5.initialize(path=found):
+                                initialized = True
+                                logging.info(f"MT5 auto-discovered terminal at: {found}")
+                                break
+                        except Exception:
+                            pass
+                    if initialized:
+                        break
+
             if not initialized:
                 last_err = mt5.last_error() if hasattr(mt5, 'last_error') else ('unknown', 'unknown')
                 return jsonify({
                     'status': 'error',
-                    'message': 'No se pudo inicializar MetaTrader 5. Verifica que el terminal esté instalado y abierto.',
+                    'message': (
+                        'No se pudo inicializar MetaTrader 5. '
+                        'Verifica que: (1) el terminal MT5 de Pepperstone esté instalado y ABIERTO, '
+                        '(2) la ruta del terminal sea correcta. '
+                        f'Error MT5: {last_err}'
+                    ),
                     'last_error': str(last_err),
                     'attempted_paths': attempted_paths
                 }), 500
 
-            authorized = mt5.login(login=login, password=password, server=server)
-            
-            if not authorized:
-                mt5.shutdown()
-                return jsonify({
-                    'status': 'error',
-                    'message': f'Error de autorización: {mt5.last_error()}. Verifica tus credenciales y el servidor ({server}).'
-                }), 401
-
+            # Check if terminal is already logged in (common when terminal is running)
             account_info = mt5.account_info()
+            already_logged_in = (
+                account_info is not None and
+                account_info.login == login
+            )
+
+            if not already_logged_in:
+                authorized = mt5.login(login=login, password=password, server=server)
+
+                if not authorized:
+                    login_err = mt5.last_error()
+                    # (1, 'Success') means the terminal is connected but login() returned
+                    # False because it was already authenticated — re-check account_info
+                    if login_err[0] == 1:
+                        account_info = mt5.account_info()
+                        if account_info is None:
+                            mt5.shutdown()
+                            return jsonify({
+                                'status': 'error',
+                                'message': (
+                                    'El terminal MT5 está conectado pero no se pudo obtener '
+                                    'la información de la cuenta. '
+                                    'Verifica que estés logueado con la cuenta correcta en el terminal.'
+                                )
+                            }), 401
+                        # account_info exists — terminal is connected under a different account
+                        logging.warning(
+                            f"MT5 login() returned False but terminal is logged in as "
+                            f"{account_info.login} (requested: {login})"
+                        )
+                        if account_info.login != login:
+                            mt5.shutdown()
+                            return jsonify({
+                                'status': 'error',
+                                'message': (
+                                    f'El terminal MT5 está logueado con la cuenta {account_info.login}, '
+                                    f'no con la cuenta solicitada {login}. '
+                                    f'Cierra el terminal, ábrelo de nuevo e inicia sesión con la cuenta correcta.'
+                                )
+                            }), 401
+                    else:
+                        mt5.shutdown()
+                        return jsonify({
+                            'status': 'error',
+                            'message': (
+                                f'Error de autorización: {login_err}. '
+                                f'Verifica tus credenciales y el servidor ({server}).'
+                            )
+                        }), 401
+                else:
+                    account_info = mt5.account_info()
+
             if account_info is None:
                 mt5.shutdown()
                 return jsonify({
@@ -127,7 +216,7 @@ class MT5Controller:
 
             return jsonify({
                 'status': 'connected',
-                'message': f'Conexión exitosa con Admiral Markets ({self.current_account["account_type"]})',
+                'message': f'Conexión exitosa con {server} ({self.current_account["account_type"]})',
                 'accountInfo': self.current_account
             })
 
@@ -260,13 +349,38 @@ class MT5Controller:
             }
 
             tf = timeframe_map.get(timeframe, mt5.TIMEFRAME_H1)
+
+            # Some brokers list synthetic/OTC pairs that don't exist in MT5 at
+            # all (e.g. EURUSD-OTC). Trying to query them with copy_rates raises
+            # a generic error and floods the browser console with 500s. Treat
+            # symbols that are not visible in this terminal as "no data" rather
+            # than as a server error.
+            try:
+                info = mt5.symbol_info(symbol)
+            except Exception:
+                info = None
+            if info is None:
+                return jsonify({
+                    'status': 'success',
+                    'data': [],
+                    'message': f'Símbolo {symbol} no disponible en este broker MT5',
+                })
+            if not getattr(info, 'visible', False):
+                try:
+                    mt5.symbol_select(symbol, True)
+                except Exception:
+                    pass
+
             rates = mt5.copy_rates_from_pos(symbol, tf, 0, n_candles)
             
-            if rates is None:
+            if rates is None or len(rates) == 0:
+                # Empty dataset → still a successful HTTP response so the front
+                # end can fall back gracefully without a 500.
                 return jsonify({
-                    'status': 'error',
-                    'message': f'Error al obtener datos: {mt5.last_error()}'
-                }), 500
+                    'status': 'success',
+                    'data': [],
+                    'message': f'Sin velas para {symbol}: {mt5.last_error() if rates is None else "vacío"}',
+                })
 
             df = pd.DataFrame(rates)
             df['time'] = pd.to_datetime(df['time'], unit='s')

@@ -410,35 +410,78 @@ class RobotConfigRepository:
     
     @staticmethod
     def create_or_update(config_data: Dict[str, Any], config_name: str = 'default') -> Dict:
-        """Crear o actualizar configuración."""
+        """Crear o actualizar configuración.
+
+        Campos que no son columnas del modelo se persisten dentro del JSON
+        ``extra_config`` para no perder ningún parámetro extendido del frontend.
+        """
+        # Columnas reales del modelo (excluye 'extra_config' y campos auto-gestionados).
+        column_keys = {c.name for c in RobotConfig.__table__.columns}
+
+        mapped_data: Dict[str, Any] = {}
+        extra_payload: Dict[str, Any] = {}
+        for key, value in (config_data or {}).items():
+            if key in ('id', 'last_updated'):
+                continue
+            if key == 'extra_config' and isinstance(value, dict):
+                extra_payload.update(value)
+                continue
+            if key in column_keys:
+                mapped_data[key] = value
+            else:
+                extra_payload[key] = value
+
         with session_scope() as session:
             config = session.query(RobotConfig).filter(
                 RobotConfig.config_name == config_name
             ).first()
-            
+
             if config:
-                for key, value in config_data.items():
-                    if hasattr(config, key):
-                        setattr(config, key, value)
+                for key, value in mapped_data.items():
+                    setattr(config, key, value)
+                if extra_payload:
+                    merged = dict(config.extra_config or {})
+                    merged.update(extra_payload)
+                    config.extra_config = merged
             else:
-                config_data['config_name'] = config_name
-                config = RobotConfig(**config_data)
+                mapped_data['config_name'] = config_name
+                if extra_payload:
+                    mapped_data['extra_config'] = extra_payload
+                config = RobotConfig(**mapped_data)
                 session.add(config)
-            
+
             session.flush()
             return config.to_dict()
     
     @staticmethod
     def update(config_name: str, update_data: Dict[str, Any]) -> Optional[Dict]:
-        """Actualizar configuración específica."""
+        """Actualizar configuración específica (extra_config aware)."""
+        column_keys = {c.name for c in RobotConfig.__table__.columns}
+
+        mapped_data: Dict[str, Any] = {}
+        extra_payload: Dict[str, Any] = {}
+        for key, value in (update_data or {}).items():
+            if key in ('id', 'last_updated'):
+                continue
+            if key == 'extra_config' and isinstance(value, dict):
+                extra_payload.update(value)
+                continue
+            if key in column_keys:
+                mapped_data[key] = value
+            else:
+                extra_payload[key] = value
+
         with session_scope() as session:
             config = session.query(RobotConfig).filter(
                 RobotConfig.config_name == config_name
             ).first()
             if config:
-                for key, value in update_data.items():
-                    if hasattr(config, key):
-                        setattr(config, key, value)
+                for key, value in mapped_data.items():
+                    setattr(config, key, value)
+                if extra_payload:
+                    merged = dict(config.extra_config or {})
+                    merged.update(extra_payload)
+                    config.extra_config = merged
                 session.flush()
                 return config.to_dict()
         return None

@@ -3,6 +3,7 @@ flask-cors
 python-dotenv
 pandas
 numpy
+yfinance>=0.2.40
 iqoption==6.8.9.1
 websocket-client==0.56.0
 requests

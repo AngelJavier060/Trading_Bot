@@ -155,24 +155,54 @@ class LiveTradingService:
         self.status = BotStatus()
         self.trade_history: List[TradeExecution] = []
         self.signal_log: deque = deque(maxlen=100)
+        # Log de señales ignoradas (motivo, símbolo, hora)
+        self.ignored_signals: deque = deque(maxlen=200)
         self.loss_patterns: List[Dict] = []
         self.pending_settlements: List[Dict] = []
-        
+
         self._stop_event = Event()
         self._scan_thread: Optional[Thread] = None
+
+        # ── Stops y filtros (ver "Mejoras al motor de estrategias") ──────────
+        # Racha de pérdidas
+        self.max_consecutive_losses: int = 3
+        self.loss_streak_pause_minutes: int = 30
+        self.reset_streak_on_win: bool = True
+        self.consecutive_losses: int = 0
+        self.pause_until: Optional[datetime] = None
+        self.last_pause_reason: Optional[str] = None
+
+        # Daily targets
+        self.daily_profit_target: float = 15.0
+        self.daily_profit_target_type: str = 'percent'  # 'percent' | 'amount'
+        self.daily_loss_limit: float = 10.0
+        self.daily_loss_limit_type: str = 'percent'
+        self.daily_pnl: float = 0.0
+        self.daily_start_balance: float = 0.0
+        self.daily_target_hit: bool = False
+        self.daily_loss_hit: bool = False
+        self.daily_reset_date: Optional[str] = None  # YYYY-MM-DD (Ecuador)
+
+        # Filtros de mercado
+        self.volatility_filter_enabled: bool = True
+        self.atr_min_threshold: float = 0.03  # % del precio
+        self.news_filter_enabled: bool = True
         
         # Trading configuration
+        # Defaults reviewed per "Mejoras al motor de estrategias" doc:
+        #  - min_confidence: 60 -> 68 (filtro mínimo aceptable en OTC 5m)
+        #  - ml_weight:     0.30 -> 0.20 (Etapa 1: ML observando)
         self.config: Dict = {}
         self.symbols: List[str] = []
         self.strategies: List[str] = ['ema_rsi']
         self.trading_mode: str = 'manual'  # 'auto' or 'manual'
-        self.min_confidence: float = 60.0
+        self.min_confidence: float = 68.0
         self.trade_amount: float = 10.0
         self.max_concurrent_trades: int = 3
         self.max_daily_trades: int = 50
         # ML controls
         self.ml_enabled: bool = True
-        self.ml_weight: float = 0.3
+        self.ml_weight: float = 0.20
         self.ml_min_probability: float = 0.55
         
         # Paths
@@ -213,14 +243,60 @@ class LiveTradingService:
             self.strategies = strategy_performance.get_best_strategies()
             logger.info(f"Auto-selected strategies: {self.strategies}")
         self.trading_mode = config.get('mode', 'manual')
-        self.min_confidence = float(config.get('min_confidence', 60))
+
+        # Clamp min_confidence to professional range [60, 95].
+        # Below 60 the OTC noise dominates; above 95 the bot rarely trades.
+        raw_min_conf = float(config.get('min_confidence', 68))
+        self.min_confidence = max(60.0, min(95.0, raw_min_conf))
+        if raw_min_conf != self.min_confidence:
+            logger.warning(
+                f"min_confidence={raw_min_conf} clamped to {self.min_confidence} (allowed range 60-95)"
+            )
+
         self.trade_amount = float(config.get('amount', 10))
-        # ML settings
+        # ML settings (Etapa 1 por defecto: peso bajo)
         self.ml_enabled = bool(config.get('use_ml', True))
-        self.ml_weight = float(config.get('ml_weight', 0.3))
-        self.ml_min_probability = float(config.get('ml_min_probability', 0.55))
+        self.ml_weight = max(0.0, min(0.5, float(config.get('ml_weight', 0.20))))
+        self.ml_min_probability = max(0.5, min(0.95, float(config.get('ml_min_probability', 0.55))))
         self.max_concurrent_trades = int(config.get('max_concurrent', 3))
         self.max_daily_trades = int(config.get('max_daily_trades', 50))
+
+        # Stops de protección
+        try:
+            self.max_consecutive_losses = max(1, int(config.get('max_consecutive_losses', 3)))
+            self.loss_streak_pause_minutes = max(1, int(config.get('loss_streak_pause_minutes', 30)))
+            self.reset_streak_on_win = bool(config.get('reset_streak_on_win', True))
+        except (TypeError, ValueError):
+            self.max_consecutive_losses = 3
+            self.loss_streak_pause_minutes = 30
+            self.reset_streak_on_win = True
+
+        # Daily target / loss
+        try:
+            self.daily_profit_target = float(config.get('daily_profit_target', 15))
+            self.daily_profit_target_type = str(config.get('daily_profit_target_type', 'percent')).lower()
+            self.daily_loss_limit = float(config.get('daily_loss_limit', 10))
+            self.daily_loss_limit_type = str(config.get('daily_loss_limit_type', 'percent')).lower()
+        except (TypeError, ValueError):
+            self.daily_profit_target = 15.0
+            self.daily_profit_target_type = 'percent'
+            self.daily_loss_limit = 10.0
+            self.daily_loss_limit_type = 'percent'
+
+        # Filtros adicionales
+        self.volatility_filter_enabled = bool(config.get('volatility_filter_enabled', True))
+        try:
+            self.atr_min_threshold = float(config.get('atr_min_threshold', 0.03))
+        except (TypeError, ValueError):
+            self.atr_min_threshold = 0.03
+        self.news_filter_enabled = bool(config.get('news_filter_enabled', True))
+
+        # Reset de contadores al arrancar (sin tocar daily_pnl si reanudas el mismo día)
+        self.consecutive_losses = 0
+        self.pause_until = None
+        self.daily_target_hit = False
+        self.daily_loss_hit = False
+        self._check_daily_reset(force=True)
         
         # VALIDATION: Check connection before starting if in auto mode with REAL account
         account_type_upper = str(account_type or '').upper()
@@ -439,7 +515,13 @@ class LiveTradingService:
                 strategy_performance.record_trade(trade.strategy_used, result, trade.confidence)
         except Exception:
             pass
-        
+
+        # Risk gating: streak + daily PnL + notificaciones
+        try:
+            self._register_trade_result(result, pnl)
+        except Exception as e:
+            logger.warning(f"_register_trade_result failed: {e}")
+
         self.status.total_pnl += pnl
         
         # Remove from active trades
@@ -1007,14 +1089,294 @@ class LiveTradingService:
                 else:
                     logger.warning("No se pudo conectar a IQ Option para actualizar balance")
             else:
-                # Try to get from MT5 if IQ not connected
+                # MT5: try live balance first, then fall back to cached session dict
                 mt5_data = trading_service.get_mt5()
                 if mt5_data and isinstance(mt5_data, dict):
-                    self.status.balance = float(mt5_data.get('balance', 0) or 0)
-                    logger.info(f"MT5 Balance updated from session dict: ${self.status.balance}")
+                    try:
+                        import MetaTrader5 as _mt5_bal
+                        info = _mt5_bal.account_info()
+                        if info is not None:
+                            self.status.balance = info.balance
+                            mt5_data['balance'] = info.balance
+                            mt5_data['equity'] = info.equity
+                            trading_service.set_mt5(mt5_data)
+                        else:
+                            self.status.balance = float(mt5_data.get('balance', 0) or 0)
+                    except Exception:
+                        self.status.balance = float(mt5_data.get('balance', 0) or 0)
         except Exception as e:
             logger.warning(f"Could not update balance: {e}")
     
+    # ── Session / Schedule helpers ───────────────────────────────────────────
+    # Sesiones definidas en horario LOCAL de Ecuador (UTC-5).
+    # El bot opera con la zona del usuario para que coincida con la UI.
+    # start_hour es inclusivo, end_hour exclusivo.
+    MARKET_SESSIONS: Dict[str, Tuple[int, int]] = {
+        # UTC: 22:00→07:00 → Ecuador 17:00→02:00 (cruza medianoche)
+        'Sydney':     (17, 26),   # 26 = 02:00 día siguiente
+        # UTC: 00:00→09:00 → Ecuador 19:00→04:00 (cruza medianoche)
+        'Tokio':      (19, 28),   # 28 = 04:00 día siguiente
+        # UTC: 07:00→16:00 → Ecuador 02:00→11:00
+        'Londres':    (2,  11),
+        # UTC: 13:00→22:00 → Ecuador 08:00→17:00
+        'Nueva York': (8,  17),
+    }
+
+    # ── Risk management / gating helpers ─────────────────────────────────────
+    @staticmethod
+    def _ecuador_now() -> datetime:
+        """Hora local de Ecuador (UTC-5, sin DST)."""
+        return datetime.utcnow() - timedelta(hours=5)
+
+    def _check_daily_reset(self, force: bool = False) -> None:
+        """Reinicia contadores diarios al cambiar de día (Ecuador) o al iniciar."""
+        today = self._ecuador_now().strftime('%Y-%m-%d')
+        if force or self.daily_reset_date != today:
+            self.daily_reset_date = today
+            self.daily_pnl = 0.0
+            self.daily_target_hit = False
+            self.daily_loss_hit = False
+            try:
+                self.daily_start_balance = float(self.status.balance or 0.0)
+            except (TypeError, ValueError):
+                self.daily_start_balance = 0.0
+            logger.info(f"[risk] Daily counters reset for {today}, start_balance=${self.daily_start_balance:.2f}")
+
+    def _is_paused(self) -> Tuple[bool, str]:
+        """Devuelve (paused, reason)."""
+        # Reset diario primero (puede limpiar daily_*_hit)
+        self._check_daily_reset()
+
+        # Pausa por racha de pérdidas
+        if self.pause_until and datetime.utcnow() < self.pause_until:
+            mins = max(1, int((self.pause_until - datetime.utcnow()).total_seconds() / 60))
+            return True, f"Pausa por racha de pérdidas ({mins} min restantes)"
+
+        # Targets diarios
+        if self.daily_target_hit:
+            return True, "Objetivo de ganancia diaria alcanzado"
+        if self.daily_loss_hit:
+            return True, "Límite de pérdida diaria alcanzado"
+
+        return False, ""
+
+    def _daily_target_amount(self) -> float:
+        """Monto en $ del objetivo de ganancia diario (con base balance Ecuador)."""
+        if self.daily_profit_target_type == 'amount':
+            return float(self.daily_profit_target)
+        base = self.daily_start_balance or float(self.status.balance or 0.0)
+        return (float(self.daily_profit_target) / 100.0) * base
+
+    def _daily_loss_amount(self) -> float:
+        """Monto en $ del límite de pérdida diaria (positivo)."""
+        if self.daily_loss_limit_type == 'amount':
+            return abs(float(self.daily_loss_limit))
+        base = self.daily_start_balance or float(self.status.balance or 0.0)
+        return (abs(float(self.daily_loss_limit)) / 100.0) * base
+
+    def _register_trade_result(self, result: str, pnl: float) -> None:
+        """Actualiza streak/daily PnL y dispara stops + notificaciones."""
+        try:
+            self._check_daily_reset()
+            pnl_val = float(pnl or 0.0)
+            self.daily_pnl += pnl_val
+
+            if result == 'loss':
+                self.consecutive_losses += 1
+                if self.consecutive_losses >= self.max_consecutive_losses:
+                    self.pause_until = datetime.utcnow() + timedelta(minutes=self.loss_streak_pause_minutes)
+                    self.last_pause_reason = (
+                        f"{self.consecutive_losses} pérdidas seguidas → pausa de "
+                        f"{self.loss_streak_pause_minutes} min"
+                    )
+                    self.consecutive_losses = 0  # reinicia para próximo ciclo
+                    logger.warning(f"[risk] {self.last_pause_reason}")
+                    self._notify_stop("loss_streak", self.last_pause_reason)
+            elif result == 'win':
+                if self.reset_streak_on_win:
+                    self.consecutive_losses = 0
+
+            # Objetivo / límite diario
+            target_amt = self._daily_target_amount()
+            loss_amt = self._daily_loss_amount()
+            if target_amt > 0 and self.daily_pnl >= target_amt and not self.daily_target_hit:
+                self.daily_target_hit = True
+                msg = f"🎯 Objetivo diario alcanzado: ${self.daily_pnl:.2f} / ${target_amt:.2f}"
+                logger.info(f"[risk] {msg}")
+                self._notify_stop("daily_target", msg)
+            if loss_amt > 0 and self.daily_pnl <= -loss_amt and not self.daily_loss_hit:
+                self.daily_loss_hit = True
+                msg = f"🛑 Límite de pérdida diaria alcanzado: ${self.daily_pnl:.2f} (-${loss_amt:.2f})"
+                logger.warning(f"[risk] {msg}")
+                self._notify_stop("daily_loss", msg)
+        except Exception as e:
+            logger.warning(f"_register_trade_result error: {e}")
+
+    def _notify_stop(self, stop_type: str, message: str) -> None:
+        """Hook de notificaciones (Telegram + UI)."""
+        # Persistimos en signal_log/errors para que el frontend pueda leerlo
+        self.status.errors.append(message)
+        try:
+            from services.notifications.telegram_service import telegram_service  # type: ignore
+            telegram_service.send(message, stop_type=stop_type)
+        except Exception:
+            # Telegram opcional → no romper trading si no está configurado
+            pass
+
+    def _ignore_signal(self, symbol: str, reason: str, extra: Optional[Dict] = None) -> None:
+        """Registrar señal ignorada para mostrar en la UI."""
+        entry = {
+            'timestamp': datetime.now().isoformat(),
+            'symbol': symbol,
+            'reason': reason,
+            'extra': extra or {},
+        }
+        self.ignored_signals.append(entry)
+        logger.info(f"[ignore] {symbol}: {reason}")
+
+    @staticmethod
+    def _is_otc_symbol(symbol: str) -> bool:
+        """Pares OTC de IQ Option terminan en '-OTC' o contienen 'otc'."""
+        if not symbol:
+            return False
+        s = str(symbol).upper()
+        return s.endswith('-OTC') or s.endswith('_OTC') or '-OTC' in s
+
+    @staticmethod
+    def _atr_pct(df, period: int = 14) -> float:
+        """Calcula ATR como % del último precio. Devuelve 0 si no se puede."""
+        try:
+            if df is None or len(df) < period + 1:
+                return 0.0
+            high = df['high'] if 'high' in df else df.iloc[:, 1]
+            low = df['low'] if 'low' in df else df.iloc[:, 2]
+            close = df['close'] if 'close' in df else df.iloc[:, 3]
+            prev_close = close.shift(1)
+            tr = pd.concat([
+                (high - low).abs(),
+                (high - prev_close).abs(),
+                (low - prev_close).abs(),
+            ], axis=1).max(axis=1)
+            atr = tr.rolling(window=period).mean().iloc[-1]
+            last_close = float(close.iloc[-1])
+            if not last_close:
+                return 0.0
+            return float(atr) / last_close * 100.0
+        except Exception:
+            return 0.0
+
+    def _strategies_for_symbol(self, symbol: str) -> List[str]:
+        """
+        Filtra estrategias activas según ``allowed_market_type`` y el símbolo.
+        Ichimoku (allowed='real') queda excluido en pares OTC.
+        """
+        names = self.strategies if self.strategies else ['ema_rsi']
+        is_otc = self._is_otc_symbol(symbol)
+        allowed: List[str] = []
+        excluded: List[str] = []
+        for name in names:
+            try:
+                from database.repositories import StrategyRepository  # local import to avoid cycles
+                row = StrategyRepository.get_by_name(name) or {}
+                market = (row.get('allowed_market_type') or 'both').lower()
+                if is_otc and market == 'real':
+                    excluded.append(name)
+                    continue
+                if (not is_otc) and market == 'otc':
+                    excluded.append(name)
+                    continue
+                allowed.append(name)
+            except Exception:
+                allowed.append(name)
+        if excluded:
+            logger.debug(f"[market_filter] {symbol}: excluded {excluded}")
+        return allowed or names
+
+    def get_ignored_signals(self, limit: int = 50) -> List[Dict]:
+        """Expone señales ignoradas para la UI."""
+        return list(self.ignored_signals)[-limit:][::-1]
+
+    def get_daily_progress(self) -> Dict:
+        """Snapshot de progreso diario para el Dashboard."""
+        self._check_daily_reset()
+        target_amt = self._daily_target_amount()
+        loss_amt = self._daily_loss_amount()
+        pct_target = (self.daily_pnl / target_amt * 100.0) if target_amt > 0 else 0.0
+        pct_loss = (abs(self.daily_pnl) / loss_amt * 100.0) if (self.daily_pnl < 0 and loss_amt > 0) else 0.0
+        paused, reason = self._is_paused()
+        return {
+            'date': self.daily_reset_date,
+            'daily_pnl': round(self.daily_pnl, 2),
+            'daily_start_balance': round(self.daily_start_balance, 2),
+            'profit_target_amount': round(target_amt, 2),
+            'profit_target_type': self.daily_profit_target_type,
+            'profit_target_value': self.daily_profit_target,
+            'loss_limit_amount': round(loss_amt, 2),
+            'loss_limit_type': self.daily_loss_limit_type,
+            'loss_limit_value': self.daily_loss_limit,
+            'progress_target_pct': round(min(100.0, max(0.0, pct_target)), 1),
+            'progress_loss_pct': round(min(100.0, max(0.0, pct_loss)), 1),
+            'consecutive_losses': self.consecutive_losses,
+            'max_consecutive_losses': self.max_consecutive_losses,
+            'paused': paused,
+            'pause_reason': reason,
+            'pause_until': self.pause_until.isoformat() if self.pause_until else None,
+            'daily_target_hit': self.daily_target_hit,
+            'daily_loss_hit': self.daily_loss_hit,
+        }
+
+    def reset_daily_counters(self) -> Dict:
+        """Reinicia manualmente los contadores diarios (con confirmación en UI)."""
+        self._check_daily_reset(force=True)
+        self.consecutive_losses = 0
+        self.pause_until = None
+        return self.get_daily_progress()
+
+
+    def _is_within_schedule(self) -> bool:
+        """
+        True si la hora local de Ecuador (UTC-5) cae dentro de al menos una
+        sesión de mercado configurada en ``config.activeSessions``.
+        Si no hay sesiones, no aplica restricción (devuelve True).
+        """
+        active = self.config.get('activeSessions', [])
+        if not active:
+            return True  # no restriction
+
+        # Custom trading_hours override: {start: 'HH:MM', end: 'HH:MM', timezone: 'America/Guayaquil'}
+        custom = self.config.get('trading_hours')
+        if custom and isinstance(custom, dict):
+            try:
+                now = self._ecuador_now()
+                start_h, start_m = [int(x) for x in custom['start'].split(':')]
+                end_h, end_m = [int(x) for x in custom['end'].split(':')]
+                start_min = start_h * 60 + start_m
+                end_min = end_h * 60 + end_m
+                now_min = now.hour * 60 + now.minute
+                if start_min <= end_min:
+                    return start_min <= now_min <= end_min
+                # Cruzando medianoche
+                return now_min >= start_min or now_min <= end_min
+            except Exception:
+                pass
+
+        now_h = self._ecuador_now().hour  # 0..23 hora Ecuador
+        for session in active:
+            rng = self.MARKET_SESSIONS.get(session)
+            if not rng:
+                continue
+            start_h, end_h = rng
+            # end_h puede ser >24 cuando la sesión cruza medianoche en Ecuador.
+            if end_h > 24:
+                # ej. 17..26 → 17..23 o 0..(end-24)
+                if now_h >= start_h or now_h < (end_h - 24):
+                    return True
+            else:
+                if start_h <= now_h < end_h:
+                    return True
+        return False
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _trading_loop(self) -> None:
         """Background trading loop that scans all symbols and executes trades."""
         
@@ -1026,25 +1388,47 @@ class LiveTradingService:
             try:
                 self.status.is_scanning = True
                 self._update_balance()
-                
+
+                # ── Pre-flight gating: pausa global por racha o targets diarios ──
+                paused, pause_reason = self._is_paused()
+                if paused:
+                    # Loguear cada ~60s para no saturar
+                    if random.random() < 0.05:
+                        logger.info(f"[risk] Bot pausado: {pause_reason}")
+                    self.status.is_scanning = False
+                    # Esperar e iterar de nuevo (settle trades pendientes)
+                    for _ in range(scan_interval):
+                        if self._stop_event.is_set():
+                            break
+                        time.sleep(1)
+                        self._settle_due_trades()
+                    continue
+
                 # Scan all configured symbols
                 for symbol in self.symbols:
                     if self._stop_event.is_set():
                         break
-                    
+
                     self.status.current_symbol = symbol
-                    
+
                     # Generate signal for this symbol
                     signal = self._analyze_symbol(symbol)
-                    
+
+                    # Manejar señales ignoradas explícitamente
+                    if isinstance(signal, dict) and signal.get('ignored'):
+                        # ya logueado por _ignore_signal
+                        time.sleep(1)
+                        self._settle_due_trades()
+                        continue
+
                     if signal and signal.get('signal', {}).get('signal') in ['call', 'put']:
                         sig_data = signal.get('signal', {})
                         confidence = sig_data.get('confidence', 0)
                         direction = sig_data.get('signal')
-                        
+
                         # Record signal
                         self.record_signal(signal)
-                        
+
                         # ML gating: skip if ML strongly contradicts
                         if self.trading_mode == 'auto' and self.ml_enabled:
                             try:
@@ -1053,31 +1437,39 @@ class LiveTradingService:
                                     ml_dir = ml_pred.get('signal')
                                     ml_prob = float(ml_pred.get('probability', 0))
                                     if ml_dir in ['call','put'] and ml_dir != direction and ml_prob >= self.ml_min_probability:
-                                        logger.info(f"Skipping trade on {symbol}: ML conflict {ml_dir} p={ml_prob:.2f}")
+                                        self._ignore_signal(symbol, "ML contradice la señal", {
+                                            'ml_dir': ml_dir, 'ml_prob': ml_prob, 'direction': direction
+                                        })
                                         continue
                             except Exception:
                                 pass
-                        
+
                         # Check if should auto-execute
-                        if self.trading_mode == 'auto' and confidence >= self.min_confidence:
+                        if self.trading_mode == 'auto' and confidence >= self.min_confidence and self._is_within_schedule():
                             # Check if we should avoid based on loss patterns
                             avoid_reason = self.should_avoid_trade(
                                 sig_data.get('indicators', {}),
                                 direction,
                                 symbol
                             )
-                            
+
                             if avoid_reason:
-                                logger.info(f"Skipping trade on {symbol}: {avoid_reason}")
+                                self._ignore_signal(symbol, avoid_reason)
                                 continue
-                            
+
                             # Execute trade
                             try:
                                 self._execute_auto_trade(symbol, direction, confidence, sig_data)
                             except Exception as e:
                                 logger.error(f"Error executing trade on {symbol}: {e}")
                                 self.status.errors.append(str(e))
-                    
+                        elif self.trading_mode == 'auto' and confidence >= self.min_confidence:
+                            self._ignore_signal(symbol, "Fuera de sesión activa", {
+                                'sessions': self.config.get('activeSessions', [])
+                            })
+                        elif self.trading_mode == 'auto':
+                            self._ignore_signal(symbol, f"Confianza {confidence:.1f}% < mínima {self.min_confidence:.1f}%")
+
                     # Small delay between symbols
                     time.sleep(1)
                     # Settle trades if any due
@@ -1114,10 +1506,40 @@ class LiveTradingService:
             
             # Generate analysis (using real data if available, simulated otherwise)
             if df is not None and not df.empty:
+                # Filtro de volatilidad (ATR mínimo). Mercado plano destruye el win rate.
+                if self.volatility_filter_enabled:
+                    atr_pct = self._atr_pct(df, period=14)
+                    if atr_pct > 0 and atr_pct < float(self.atr_min_threshold):
+                        self._ignore_signal(symbol, "Volatilidad insuficiente (ATR bajo)", {
+                            'atr_pct': round(atr_pct, 4),
+                            'threshold_pct': self.atr_min_threshold,
+                        })
+                        return {'ignored': True, 'reason': 'volatility', 'symbol': symbol}
+
+                # Filtro de noticias económicas (modo simple).
+                if self.news_filter_enabled:
+                    try:
+                        from services.news_filter import is_news_blocked, parse_windows_from_config
+                        extra = parse_windows_from_config(self.config.get('news_blocked_windows'))
+                        blocked, reason = is_news_blocked(
+                            enabled=True,
+                            minutes_before=int(self.config.get('news_pause_minutes_before', 15)),
+                            minutes_after=int(self.config.get('news_pause_minutes_after', 30)),
+                            extra_windows_utc=extra,
+                        )
+                        if blocked:
+                            self._ignore_signal(symbol, f"Noticia económica: {reason}")
+                            return {'ignored': True, 'reason': 'news', 'symbol': symbol}
+                    except Exception as ne:
+                        logger.debug(f"news_filter skipped: {ne}")
+
                 # Multi-strategy confluence: run ALL configured strategies
                 from services.strategies import get_strategy, AVAILABLE_STRATEGIES
                 candles_list = df.to_dict('records')
-                strategy_names = self.strategies if self.strategies else ['ema_rsi']
+                # Filtrar por allowed_market_type (Ichimoku queda fuera en OTC)
+                strategy_names = self._strategies_for_symbol(symbol)
+                if not strategy_names:
+                    strategy_names = ['ema_rsi']
 
                 call_votes = 0
                 put_votes = 0
@@ -1391,7 +1813,83 @@ class LiveTradingService:
                     "IQ Option no conectado. Conecta la cuenta REAL antes de ejecutar operaciones en cuenta real."
                 )
         elif platform == 'mt5':
-            broker_error = "MT5 execution not yet fully implemented via this unified method"
+            # ── MT5 Execution ──────────────────────────────────────────────────────
+            try:
+                import MetaTrader5 as _mt5
+            except ImportError:
+                broker_error = "MetaTrader5 module no instalado. Instala con: pip install MetaTrader5"
+                _mt5 = None
+
+            if _mt5 is not None:
+                mt5_session = trading_service.get_mt5()
+                if mt5_session is None:
+                    if is_demo:
+                        # DEMO sin broker MT5: simular localmente
+                        trade_id_broker = f"MT5-DEMO-{int(time.time() * 1000)}"
+                        executed_on_broker = True
+                        logger.info(f"📋 MT5 Demo trade simulated: {symbol} {direction} ID:{trade_id_broker}")
+                    else:
+                        broker_error = "MT5 no conectado. Conecta MetaTrader 5 antes de ejecutar en cuenta REAL."
+                else:
+                    # Broker MT5 conectado — enviar orden de mercado
+                    try:
+                        symbol_info = _mt5.symbol_info(symbol)
+                        if symbol_info is None:
+                            # Intentar habilitar el símbolo en el Market Watch
+                            _mt5.symbol_select(symbol, True)
+                            symbol_info = _mt5.symbol_info(symbol)
+
+                        if symbol_info is None:
+                            broker_error = f"Símbolo {symbol} no encontrado en MT5. Verifica el nombre exacto en tu broker."
+                        elif not symbol_info.visible:
+                            broker_error = f"Símbolo {symbol} no visible en MT5 Market Watch."
+                        else:
+                            mt5_direction = _mt5.ORDER_TYPE_BUY if direction == 'call' else _mt5.ORDER_TYPE_SELL
+                            tick = _mt5.symbol_info_tick(symbol)
+                            price = tick.ask if direction == 'call' else tick.bid
+
+                            # Calcular SL/TP desde config si existen (en pips)
+                            point = symbol_info.point
+                            sl_pips = float(self.config.get('mt5StopLoss', 0) or 0)
+                            tp_pips = float(self.config.get('mt5TakeProfit', 0) or 0)
+                            lot_size = float(self.config.get('mt5LotSize', 0.01) or 0.01)
+
+                            sl = (price - sl_pips * point * 10) if (direction == 'call' and sl_pips > 0) else \
+                                 (price + sl_pips * point * 10) if (direction == 'put' and sl_pips > 0) else 0.0
+                            tp = (price + tp_pips * point * 10) if (direction == 'call' and tp_pips > 0) else \
+                                 (price - tp_pips * point * 10) if (direction == 'put' and tp_pips > 0) else 0.0
+
+                            request = {
+                                'action': _mt5.TRADE_ACTION_DEAL,
+                                'symbol': symbol,
+                                'volume': lot_size,
+                                'type': mt5_direction,
+                                'price': price,
+                                'sl': sl if sl > 0 else 0.0,
+                                'tp': tp if tp > 0 else 0.0,
+                                'deviation': 20,
+                                'magic': 234000,
+                                'comment': f'bot_{strategy[:8]}',
+                                'type_time': _mt5.ORDER_TIME_GTC,
+                                'type_filling': _mt5.ORDER_FILLING_IOC,
+                            }
+                            result = _mt5.order_send(request)
+                            if result is None or result.retcode != _mt5.TRADE_RETCODE_DONE:
+                                retcode = result.retcode if result else 'None'
+                                comment = result.comment if result else ''
+                                broker_error = f"MT5 order_send failed: retcode={retcode} comment={comment}"
+                                logger.error(f"MT5 order_send error: {broker_error} | request={request}")
+                            else:
+                                trade_id_broker = result.order
+                                executed_on_broker = True
+                                entry_price = result.price if result.price > 0 else price
+                                logger.info(
+                                    f"✅ MT5 Order placed: ticket={trade_id_broker} {symbol} {direction} "
+                                    f"lot={lot_size} price={entry_price}"
+                                )
+                    except Exception as mt5_ex:
+                        broker_error = f"MT5 execution error: {mt5_ex}"
+                        logger.error(broker_error, exc_info=True)
         else:
             broker_error = f"Unknown platform: {platform}"
 
@@ -1434,14 +1932,24 @@ class LiveTradingService:
                 except Exception:
                     pass
                 # Launch background watcher: polls check_win_v4 and pushes SSE event
-                watcher = Thread(
-                    target=self._watch_order_result,
-                    args=(trade.id, str(trade_id_broker), expiration * 60),
-                    daemon=True,
-                    name=f"order-watcher-{trade.id[:8]}"
-                )
-                watcher.start()
-                logger.info(f"🚀 Order watcher thread started for trade {trade.id} order {trade_id_broker}")
+                if platform == 'iqoption':
+                    watcher = Thread(
+                        target=self._watch_order_result,
+                        args=(trade.id, str(trade_id_broker), expiration * 60),
+                        daemon=True,
+                        name=f"iq-watcher-{trade.id[:8]}"
+                    )
+                    watcher.start()
+                    logger.info(f"🚀 IQ Order watcher started for trade {trade.id} order {trade_id_broker}")
+                elif platform == 'mt5' and not str(trade_id_broker).startswith('MT5-DEMO-'):
+                    mt5_watcher = Thread(
+                        target=self._watch_mt5_position,
+                        args=(trade.id, int(trade_id_broker)),
+                        daemon=True,
+                        name=f"mt5-watcher-{trade.id[:8]}"
+                    )
+                    mt5_watcher.start()
+                    logger.info(f"🚀 MT5 Position watcher started for trade {trade.id} ticket {trade_id_broker}")
         
         self.status.last_trade = trade.to_dict()
         return {
@@ -1450,6 +1958,101 @@ class LiveTradingService:
             'broker_id': trade_id_broker,
             'message': 'Trade executed and recorded successfully'
         }
+
+    def _watch_mt5_position(self, trade_id: str, ticket: int) -> None:
+        """
+        Background thread: monitors an open MT5 position by ticket.
+        When the position closes (disappears from positions_get), queries
+        history_deals_get for the final P&L and pushes an SSE event.
+        """
+        try:
+            import MetaTrader5 as _mt5
+        except ImportError:
+            logger.error("[MT5Watcher] MetaTrader5 not installed")
+            return
+
+        max_wait = 7200  # 2 hours max watch time
+        poll_interval = 5  # seconds
+        elapsed = 0
+        logger.info(f"[MT5Watcher] Watching ticket {ticket} for trade {trade_id}")
+
+        while elapsed < max_wait:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            try:
+                positions = _mt5.positions_get(ticket=ticket)
+                if positions is None or len(positions) == 0:
+                    # Position is closed — fetch deal history
+                    import datetime as _dt
+                    from_date = _dt.datetime.now() - _dt.timedelta(hours=24)
+                    deals = _mt5.history_deals_get(
+                        from_date,
+                        _dt.datetime.now(),
+                        group="*"
+                    )
+                    profit = 0.0
+                    if deals:
+                        for deal in deals:
+                            if deal.position_id == ticket and deal.entry == 1:  # entry=1 means EXIT deal
+                                profit = deal.profit
+                                break
+
+                    result = 'win' if profit >= 0 else 'loss'
+                    logger.info(
+                        f"[MT5Watcher] ticket={ticket} closed: result={result} profit={profit:.2f}"
+                    )
+
+                    # Settle in our internal system
+                    try:
+                        self.complete_trade(trade_id, result, profit)
+                    except Exception as settle_err:
+                        logger.warning(f"[MT5Watcher] complete_trade error: {settle_err}")
+
+                    # Remove from pending settlements if present
+                    self.pending_settlements = [
+                        s for s in self.pending_settlements if s.get('trade_id') != trade_id
+                    ]
+
+                    # Push SSE events
+                    try:
+                        from services.trading.sse_service import sse_service
+                        sse_service.publish('trade_result', {
+                            'trade_id': trade_id,
+                            'order_id': str(ticket),
+                            'result': result,
+                            'profit': profit,
+                            'platform': 'mt5',
+                        })
+                        mt5_session = trading_service.get_mt5()
+                        if mt5_session:
+                            balance = float(mt5_session.get('balance', 0))
+                            try:
+                                import MetaTrader5 as _mt5b
+                                info = _mt5b.account_info()
+                                if info:
+                                    balance = info.balance
+                                    # Update cached session
+                                    mt5_session['balance'] = balance
+                                    mt5_session['equity'] = info.equity
+                                    trading_service.set_mt5(mt5_session)
+                            except Exception:
+                                pass
+                            sse_service.publish('balance_update', {
+                                'balance': balance,
+                                'platform': 'mt5',
+                            })
+                    except Exception as sse_err:
+                        logger.warning(f"[MT5Watcher] SSE error: {sse_err}")
+                    return
+            except Exception as poll_err:
+                logger.warning(f"[MT5Watcher] poll error ticket={ticket}: {poll_err}")
+
+        logger.warning(f"[MT5Watcher] Timeout watching MT5 ticket {ticket} after {max_wait}s")
+        try:
+            from services.trading.sse_service import sse_service
+            sse_service.publish('trade_timeout', {'trade_id': trade_id, 'platform': 'mt5'})
+        except Exception:
+            pass
 
     def _watch_order_result(self, trade_id: str, external_id: str, expiration_sec: int) -> None:
         """

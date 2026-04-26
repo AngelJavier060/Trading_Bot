@@ -92,6 +92,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
     }
 
     setIsLoading(true);
+    setErrorDetail(null);
     try {
       const result = await api.connectMT5({
         login: parseInt(mt5Login),
@@ -100,15 +101,19 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
         terminal_path: mt5TerminalPath
       });
       
-      if (result.status === 'success' || result.connected) {
+      if (result.status === 'success' || result.status === 'connected' || result.connected) {
         toast.success('Conectado a MetaTrader 5');
         onSuccess(result);
         onClose();
       } else {
-        toast.error(result.message || 'Error de conexión');
+        const msg = result.message || 'Error de conexión';
+        setErrorDetail(msg);
+        toast.error(msg);
       }
     } catch (error: any) {
-      toast.error(error.message || 'Error al conectar');
+      const msg = error.message || 'Error al conectar con MT5';
+      setErrorDetail(msg);
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -213,6 +218,17 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
             </div>
           ) : (
             <div className="space-y-4">
+              {/* MT5 prerequisite notice */}
+              <div className="bg-amber-900/25 border border-amber-700/60 rounded-lg p-3 text-xs text-amber-300 space-y-1">
+                <p className="font-semibold">⚠️ Requisitos para conectar MT5:</p>
+                <p>1. El terminal <strong>Pepperstone MetaTrader 5</strong> debe estar <strong>instalado y abierto</strong> en este PC.</p>
+                <p>2. El módulo Python debe estar instalado: <code className="bg-slate-900 px-1 rounded">pip install MetaTrader5</code></p>
+              </div>
+              {errorDetail && (
+                <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-xs text-red-300 break-words">
+                  <strong>Error:</strong> {errorDetail}
+                </div>
+              )}
               <div>
                 <label className="block text-sm text-slate-400 mb-2">Login (Número de cuenta)</label>
                 <input
@@ -254,11 +270,11 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
                   type="text"
                   value={mt5Server}
                   onChange={(e) => setMt5Server(e.target.value)}
-                  placeholder="AdmiralsSC-Demo"
+                  placeholder="MT5-demo01"
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  Ej: AdmiralsSC-Demo, ICMarkets-Demo
+                  Ej: MT5-demo01 (Pepperstone), AdmiralsSC-Demo, ICMarkets-Demo02
                 </p>
               </div>
 
@@ -268,11 +284,11 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
                   type="text"
                   value={mt5TerminalPath}
                   onChange={(e) => setMt5TerminalPath(e.target.value)}
-                  placeholder="C:\\Program Files\\Admirals MetaTrader 5\\terminal64.exe"
+                  placeholder="C:\\Program Files\\Pepperstone MetaTrader 5\\terminal64.exe"
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                 />
                 <p className="text-xs text-slate-500 mt-1">
-                  Ruta al terminal64.exe si no se detecta automáticamente
+                  Opcional. Si la detección automática falla, pega aquí la ruta exacta al terminal64.exe
                 </p>
               </div>
             </div>
@@ -316,7 +332,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
                   Conectando...
                 </>
               ) : (
-                'Conectar IQ Option'
+                platform === 'mt5' ? 'Conectar MT5' : 'Conectar IQ Option'
               )}
             </button>
           </div>

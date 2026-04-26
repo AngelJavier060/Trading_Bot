@@ -170,6 +170,8 @@ const api = {
   },
 
   connectTradingPlatform: async (platform: string, credentials: Record<string, string>, accountType: string, demoOnly = false) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 35000);
     try {
       const response = await fetch(`${BASE_URL}/api/trading/connect`, {
         method: 'POST',
@@ -180,7 +182,9 @@ const api = {
           account_type: accountType,
           demo_only: demoOnly,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
@@ -189,6 +193,10 @@ const api = {
 
       return await response.json();
     } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('La conexión tardó demasiado (>35s). Verifica tu conexión a internet e intenta nuevamente.');
+      }
       throw new Error(error.message || 'Error en la conexión');
     }
   },
@@ -739,7 +747,101 @@ const api = {
       throw new Error(data.message || 'Error al guardar configuración');
     }
     return data;
-  }
+  },
+
+  // ==================== RIESGO / STOPS / SEÑALES IGNORADAS ====================
+
+  getDailyProgress: async () => {
+    const response = await fetch(`${BASE_URL}/api/live/daily-progress`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener progreso diario');
+    }
+    return data;
+  },
+
+  getUpcomingNews: async (limit: number = 5, impact?: 'high' | 'medium') => {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (impact) params.set('impact', impact);
+    const response = await fetch(`${BASE_URL}/api/live/news/upcoming?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener noticias próximas');
+    }
+    return data;
+  },
+
+  refreshNewsCache: async () => {
+    const response = await fetch(`${BASE_URL}/api/live/news/refresh`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error refrescando caché de noticias');
+    }
+    return data;
+  },
+
+  getNewsStatus: async () => {
+    const response = await fetch(`${BASE_URL}/api/live/news/status`);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error obteniendo estado de noticias');
+    }
+    return data;
+  },
+
+  getIgnoredSignals: async (limit?: number) => {
+    const url = `${BASE_URL}/api/live/signals/ignored${limit ? `?limit=${limit}` : ''}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener señales ignoradas');
+    }
+    return data;
+  },
+
+  resetDailyCounters: async () => {
+    const response = await fetch(`${BASE_URL}/api/live/reset-daily`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al reiniciar contadores diarios');
+    }
+    return data;
+  },
+
+  testTelegram: async () => {
+    const response = await fetch(`${BASE_URL}/api/live/notifications/telegram/test`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al enviar notificación de prueba');
+    }
+    return data;
+  },
+
+  getBacktestingSummary: async (strategy: string) => {
+    const url = `${BASE_URL}/api/backtesting/summary?name=${encodeURIComponent(strategy)}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al obtener resumen de backtesting');
+    }
+    return data;
+  },
+
+  getMLStatus: async () => {
+    // Intenta varios endpoints comunes de ML; devuelve datos parciales si alguno responde.
+    const candidates = ['/api/ml/status', '/api/ml/info', '/api/auto-trainer/status'];
+    for (const path of candidates) {
+      try {
+        const r = await fetch(`${BASE_URL}${path}`);
+        if (r.ok) {
+          const d = await r.json();
+          if (d && d.status !== 'error') return d;
+        }
+      } catch (_) { /* continue */ }
+    }
+    return { status: 'unavailable' };
+  },
 };
 
 export default api;

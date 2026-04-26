@@ -418,6 +418,87 @@ class BacktestingController:
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
+    def get_strategy_summary(self):
+        """
+        Resumen mínimo de backtesting de una estrategia para validar que cumpla
+        criterios antes de activar en vivo:
+            - signals_total ≥ 100
+            - win_rate     ≥ 55
+            - net_profit   > 0
+
+        Combina:
+          a) último resultado en cache (results_cache / disco)
+          b) métricas en BD (Strategy.total_trades / win_rate / total_profit)
+
+        GET /api/backtesting/summary?name=ema_rsi
+        """
+        try:
+            name = request.args.get('name', 'ema_rsi')
+
+            best: Dict = {}
+            try:
+                # (a) cache en memoria
+                for r in self.results_cache.values():
+                    if r.get('strategy') != name:
+                        continue
+                    metrics = r.get('metrics') or {}
+                    total = int(metrics.get('total_trades', r.get('total_trades', 0)) or 0)
+                    if total > best.get('signals_total', -1):
+                        best = {
+                            'signals_total': total,
+                            'win_rate': float(metrics.get('win_rate', 0) or 0),
+                            'net_profit': float(metrics.get('net_profit', 0) or 0),
+                            'source': 'cache',
+                        }
+            except Exception:
+                pass
+
+            # (b) métricas almacenadas en BD
+            try:
+                from database.repositories import StrategyRepository
+                row = StrategyRepository.get_by_name(name)
+                if row:
+                    db_total = int(row.get('total_trades') or 0)
+                    if db_total > best.get('signals_total', -1):
+                        best = {
+                            'signals_total': db_total,
+                            'win_rate': float(row.get('win_rate') or 0),
+                            'net_profit': float(row.get('total_profit') or 0),
+                            'source': 'db',
+                        }
+            except Exception as db_err:
+                logger.warning(f"summary DB lookup failed: {db_err}")
+
+            if not best:
+                best = {'signals_total': 0, 'win_rate': 0.0, 'net_profit': 0.0, 'source': 'none'}
+
+            min_signals = 100
+            min_win_rate = 55.0
+            meets_signals = best['signals_total'] >= min_signals
+            meets_winrate = best['win_rate'] >= min_win_rate
+            meets_pnl = best['net_profit'] > 0
+            meets_all = meets_signals and meets_winrate and meets_pnl
+
+            return jsonify({
+                'status': 'success',
+                'strategy': name,
+                'summary': best,
+                'criteria': {
+                    'min_signals': min_signals,
+                    'min_win_rate': min_win_rate,
+                    'min_net_profit': 0,
+                },
+                'checks': {
+                    'meets_signals': meets_signals,
+                    'meets_win_rate': meets_winrate,
+                    'meets_pnl': meets_pnl,
+                    'meets_all': meets_all,
+                },
+            })
+        except Exception as e:
+            logger.error(f"Error get_strategy_summary: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
     def run_auto_backtest(self):
         """
         Run a backtest fetching real historical data from Yahoo Finance.
@@ -454,8 +535,15 @@ class BacktestingController:
             assets = data.get('assets') or ['EURUSD']
             if isinstance(assets, str):
                 assets = [assets]
+            # Normalize platform-specific suffixes that Yahoo Finance does not
+            # recognise (e.g. EURUSD-OTC → EURUSD).
+            assets = [str(a).upper().replace('-OTC', '').replace('_OTC', '') for a in assets if a]
             timeframe = data.get('timeframe', '5m')
             days_back = int(data.get('days_back', 30))
+            # Clamp days_back to Yahoo Finance hard limits per timeframe so we
+            # never request more than what the data source can deliver.
+            from services.backtesting.data_fetcher import YF_MAX_DAYS as _YF_MAX
+            days_back = max(2, min(days_back, _YF_MAX.get(timeframe, 58)))
             expiration_minutes = int(data.get('expiration_minutes', 5))
 
             # Parse optional date range
@@ -479,13 +567,21 @@ class BacktestingController:
             )
 
             if not candles_data:
+                # Tell the user exactly which assets failed and suggest the
+                # most common fix (timeframe too small or unsupported symbol).
+                pretty_assets = ', '.join(assets) or '—'
                 return jsonify({
                     'status': 'error',
                     'message': (
-                        'No se pudieron obtener datos históricos. '
-                        'Verifica el símbolo y el rango de fechas. '
-                        'Para timeframes de 1m/5m/15m el máximo es ~58 días.'
-                    )
+                        f"Yahoo Finance no devolvió velas para [{pretty_assets}] "
+                        f"con timeframe {timeframe} y {days_back} días. "
+                        "Prueba con otro activo (Forex / Crypto / Índice major), "
+                        "sube el timeframe a 1h o 1d, o reduce el periodo. "
+                        "OTC e índices propios del broker no existen en Yahoo Finance."
+                    ),
+                    'assets':    assets,
+                    'timeframe': timeframe,
+                    'days_back': days_back,
                 }), 400
 
             total_candles = sum(len(v) for v in candles_data.values())

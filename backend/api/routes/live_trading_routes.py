@@ -86,6 +86,71 @@ def get_strategy_ranking():
     return live_trading_controller.get_strategy_ranking()
 
 
+@live_trading_bp.route('/signals/ignored', methods=['GET'])
+def get_ignored_signals():
+    """Señales ignoradas con motivo (volatilidad, racha, noticia, etc.)."""
+    return live_trading_controller.get_ignored_signals()
+
+
+@live_trading_bp.route('/daily-progress', methods=['GET'])
+def get_daily_progress():
+    """Snapshot de PnL diario, racha y estado de pausa para el Dashboard."""
+    return live_trading_controller.get_daily_progress()
+
+
+@live_trading_bp.route('/news/upcoming', methods=['GET'])
+def get_upcoming_news():
+    """
+    Próximas noticias económicas relevantes.
+    Fuente preferida: ForexFactory (feed JSON público, cacheado 30 min).
+    Fallback automático: calendario heurístico local si la red falla.
+    """
+    from flask import jsonify
+    from services.news_provider import get_upcoming
+    try:
+        limit = int(request.args.get('limit', 5))
+        impact = request.args.get('impact')  # 'high' | 'medium' | None
+        prefer_live = request.args.get('prefer_live', '1') not in ('0', 'false', 'False')
+        items = get_upcoming(
+            limit=max(1, min(limit, 20)),
+            impact=impact,
+            prefer_live=prefer_live,
+        )
+        source = items[0].get('source') if items else None
+        return jsonify({'status': 'success', 'items': items, 'source': source})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e), 'items': []}), 500
+
+
+@live_trading_bp.route('/news/refresh', methods=['POST'])
+def refresh_news_cache():
+    """Invalida el caché del feed para forzar un re-fetch en el próximo GET."""
+    from flask import jsonify
+    from services.news_provider import invalidate_cache
+    invalidate_cache()
+    return jsonify({'status': 'success', 'message': 'Caché de noticias invalidado'})
+
+
+@live_trading_bp.route('/news/status', methods=['GET'])
+def news_status():
+    """Diagnóstico del caché de noticias (fuente actual, edad, etc.)."""
+    from flask import jsonify
+    from services.news_provider import get_status
+    return jsonify({'status': 'success', **get_status()})
+
+
+@live_trading_bp.route('/reset-daily', methods=['POST'])
+def reset_daily_counters():
+    """Reinicia manualmente contadores diarios (con confirmación en UI)."""
+    return live_trading_controller.reset_daily_counters()
+
+
+@live_trading_bp.route('/notifications/telegram/test', methods=['POST'])
+def test_telegram():
+    """Envía un mensaje de prueba al chat de Telegram configurado."""
+    return live_trading_controller.test_telegram()
+
+
 @live_trading_bp.route('/auto-train', methods=['POST'])
 def auto_train_now():
     """Trigger immediate ML retraining."""

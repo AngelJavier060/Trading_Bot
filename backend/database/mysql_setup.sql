@@ -372,6 +372,82 @@ INSERT INTO robot_configs (config_name, mode, platform, account_type, active_sym
 ON DUPLICATE KEY UPDATE last_updated = CURRENT_TIMESTAMP;
 
 -- ============================================
+-- MIGRACIONES IDEMPOTENTES (v1.1 - Mejoras motor estrategias)
+-- ============================================
+-- Estas sentencias añaden columnas nuevas si no existen.
+-- Compatible con MySQL 8 mediante check en information_schema.
+
+-- robot_configs.extra_config -> JSON para parámetros extendidos del frontend
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'robot_configs'
+    AND COLUMN_NAME = 'extra_config'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE robot_configs ADD COLUMN extra_config JSON NULL AFTER ml_min_confidence',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- robot_configs.ml_weight -> peso del ML (default 0.20 etapa inicial)
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'robot_configs'
+    AND COLUMN_NAME = 'ml_weight'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE robot_configs ADD COLUMN ml_weight DECIMAL(4,3) DEFAULT 0.200 AFTER ml_min_confidence',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- strategies.allowed_market_type -> 'otc' / 'real' / 'both'
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'strategies'
+    AND COLUMN_NAME = 'allowed_market_type'
+);
+SET @sql := IF(@col_exists = 0,
+  "ALTER TABLE strategies ADD COLUMN allowed_market_type VARCHAR(8) DEFAULT 'both' AFTER max_risk_per_trade",
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- strategies.recommended_timeframe -> sugerido en UI ('1m' | '5m' | '15m')
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'strategies'
+    AND COLUMN_NAME = 'recommended_timeframe'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE strategies ADD COLUMN recommended_timeframe VARCHAR(8) NULL AFTER allowed_market_type',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Defaults profesionales: subir min_confidence de Ichimoku y restringir a 'real'
+UPDATE strategies SET min_confidence = 72.00,
+                      allowed_market_type = 'real',
+                      recommended_timeframe = '15m',
+                      is_active = 0
+ WHERE name = 'ichimoku';
+
+-- Defaults: timeframes recomendados para el resto
+UPDATE strategies SET recommended_timeframe = '5m',
+                      allowed_market_type = COALESCE(NULLIF(allowed_market_type, ''), 'both')
+ WHERE name IN ('ema_rsi', 'bollinger', 'multi_strategy')
+   AND (recommended_timeframe IS NULL OR recommended_timeframe = '');
+
+UPDATE strategies SET recommended_timeframe = '1m',
+                      allowed_market_type = COALESCE(NULLIF(allowed_market_type, ''), 'both')
+ WHERE name = 'macd'
+   AND (recommended_timeframe IS NULL OR recommended_timeframe = '');
+
+-- min_confidence por defecto en BD: 60 -> 68
+UPDATE strategies SET min_confidence = 68.00
+ WHERE min_confidence < 68.00 AND name <> 'ichimoku';
+
+-- ============================================
 -- VERIFICACIÓN
 -- ============================================
 SELECT 'Base de datos trading_bot creada correctamente!' AS mensaje;

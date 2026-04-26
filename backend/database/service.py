@@ -81,16 +81,25 @@ class TradingDatabaseService:
             logger.warning(f"Error creando datos por defecto: {e}")
     
     def _ensure_default_strategies(self):
-        """Crear estrategias por defecto."""
+        """Crear estrategias por defecto.
+
+        Defaults aligned with "Mejoras al motor de estrategias":
+          - min_confidence base ≥ 68 (Etapa inicial DEMO)
+          - Ichimoku restringido a mercados 'real' (no funciona en OTC 5m)
+          - Cada estrategia declara su recommended_timeframe (1m/5m/15m)
+            para mostrarlo como nota en la UI.
+        """
         default_strategies = [
             {
                 'name': 'ema_rsi',
                 'display_name': 'EMA + RSI',
-                'description': 'Estrategia basada en cruce de EMAs con confirmación RSI',
-                'version': '1.0.0',
+                'description': 'Tendencia con confirmación de sobreventa/sobrecompra (EMA + RSI)',
+                'version': '1.1.0',
                 'indicators_config': {
                     'ema': {'periods': [9, 21], 'timeframe': '5m'},
-                    'rsi': {'period': 14, 'overbought': 70, 'oversold': 30}
+                    'rsi': {'period': 14, 'overbought': 70, 'oversold': 30},
+                    'recommended_timeframe': '5m',
+                    'allowed_market_type': 'both',
                 },
                 'entry_rules': {
                     'ema_cross': True,
@@ -98,74 +107,102 @@ class TradingDatabaseService:
                     'min_rsi_call': 30,
                     'max_rsi_put': 70
                 },
-                'min_confidence': 60.0,
+                'min_confidence': 68.0,
                 'allowed_timeframes': ['1m', '5m', '15m'],
             },
             {
                 'name': 'macd',
-                'display_name': 'MACD Strategy',
-                'description': 'Estrategia basada en MACD con histograma',
-                'version': '1.0.0',
+                'display_name': 'MACD',
+                'description': 'Cruce de medias rápidas para scalping de 1 min',
+                'version': '1.1.0',
                 'indicators_config': {
-                    'macd': {'fast': 12, 'slow': 26, 'signal': 9}
+                    'macd': {'fast': 12, 'slow': 26, 'signal': 9},
+                    'recommended_timeframe': '1m',
+                    'allowed_market_type': 'both',
                 },
                 'entry_rules': {
                     'macd_cross': True,
                     'histogram_confirmation': True
                 },
-                'min_confidence': 55.0,
-                'allowed_timeframes': ['5m', '15m', '1h'],
+                'min_confidence': 68.0,
+                'allowed_timeframes': ['1m', '5m', '15m'],
             },
             {
                 'name': 'bollinger',
                 'display_name': 'Bollinger Bands',
-                'description': 'Estrategia de reversión a la media con Bandas de Bollinger',
-                'version': '1.0.0',
+                'description': 'Operativa en volatilidad extrema y ruptura de bandas',
+                'version': '1.1.0',
                 'indicators_config': {
-                    'bollinger': {'period': 20, 'std_dev': 2.0}
+                    'bollinger': {'period': 20, 'std_dev': 2.0},
+                    'recommended_timeframe': '5m',
+                    'allowed_market_type': 'both',
                 },
                 'entry_rules': {
                     'touch_band': True,
                     'reversal_candle': True
                 },
-                'min_confidence': 60.0,
+                'min_confidence': 68.0,
                 'allowed_timeframes': ['5m', '15m'],
             },
             {
                 'name': 'ichimoku',
                 'display_name': 'Ichimoku Cloud',
-                'description': 'Estrategia completa con Ichimoku Kinko Hyo',
-                'version': '1.0.0',
+                'description': 'Ichimoku Kinko Hyo (NO recomendado en OTC corto plazo)',
+                'version': '1.1.0',
                 'indicators_config': {
                     'ichimoku': {
                         'tenkan': 9,
                         'kijun': 26,
                         'senkou_b': 52
-                    }
+                    },
+                    'recommended_timeframe': '15m',
+                    # Ichimoku se diseñó para mercados con volumen real (1969, arroz japonés).
+                    # En OTC de 5m las señales son tardías o aleatorias → restringir a 'real'.
+                    'allowed_market_type': 'real',
                 },
                 'entry_rules': {
                     'price_vs_cloud': True,
                     'tk_cross': True
                 },
-                'min_confidence': 65.0,
+                'min_confidence': 72.0,
                 'allowed_timeframes': ['15m', '1h', '4h'],
+                # Activable manualmente sólo en MT5 / pares reales.
+                'is_active': False,
+            },
+            {
+                'name': 'rsi_divergence',
+                'display_name': 'RSI Divergence',
+                'description': 'Divergencias de RSI para reversiones de precio',
+                'version': '1.1.0',
+                'indicators_config': {
+                    'rsi': {'period': 14, 'overbought': 70, 'oversold': 30},
+                    'recommended_timeframe': '15m',
+                    'allowed_market_type': 'both',
+                },
+                'entry_rules': {
+                    'divergence_required': True
+                },
+                'min_confidence': 70.0,
+                'allowed_timeframes': ['5m', '15m', '1h'],
             },
             {
                 'name': 'multi_strategy',
                 'display_name': 'Multi-Estrategia ML',
                 'description': 'Combinación de múltiples indicadores optimizada por ML',
-                'version': '1.0.0',
+                'version': '1.1.0',
                 'indicators_config': {
                     'ema': {'periods': [9, 21, 50]},
                     'rsi': {'period': 14},
                     'macd': {'fast': 12, 'slow': 26, 'signal': 9},
-                    'bollinger': {'period': 20, 'std_dev': 2.0}
+                    'bollinger': {'period': 20, 'std_dev': 2.0},
+                    'recommended_timeframe': '5m',
+                    'allowed_market_type': 'both',
                 },
                 'entry_rules': {
                     'ml_decision': True,
                     'min_indicators_agree': 2
                 },
-                'min_confidence': 70.0,
+                'min_confidence': 72.0,
                 'is_ml_optimized': True,
                 'allowed_timeframes': ['5m', '15m'],
             },

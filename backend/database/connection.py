@@ -101,7 +101,14 @@ def init_db(app=None):
     # Importar modelos y crear tablas
     from . import models
     Base.metadata.create_all(bind=_engine)
-    
+
+    # Migraciones idempotentes (columnas nuevas) – seguras en cada arranque
+    try:
+        from .migrations import run_migrations
+        run_migrations(_engine)
+    except Exception as mig_err:
+        logger.warning(f"Migraciones no aplicadas: {mig_err}")
+
     logger.info("Base de datos inicializada correctamente")
     return db
 

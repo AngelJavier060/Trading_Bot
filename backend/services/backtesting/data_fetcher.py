@@ -2,6 +2,7 @@
 Backtesting Data Fetcher
 ========================
 Fetches real historical OHLCV data from Yahoo Finance for use in backtesting.
+Requires `yfinance` (declared in backend/requirements.txt).
 """
 
 import logging
@@ -11,20 +12,32 @@ import math
 
 logger = logging.getLogger(__name__)
 
-# Map common trading symbols to Yahoo Finance tickers
+# Map common trading symbols to Yahoo Finance tickers.
+# Keep this in sync with IQ_OPTION_ASSETS / MT5_ASSETS in the frontend.
 TICKER_MAP: Dict[str, str] = {
-    # Forex
+    # Forex (majors)
     'EURUSD': 'EURUSD=X', 'GBPUSD': 'GBPUSD=X', 'USDJPY': 'USDJPY=X',
     'USDCHF': 'USDCHF=X', 'AUDUSD': 'AUDUSD=X', 'NZDUSD': 'NZDUSD=X',
-    'USDCAD': 'USDCAD=X', 'EURGBP': 'EURGBP=X', 'EURJPY': 'EURJPY=X',
-    'GBPJPY': 'GBPJPY=X', 'AUDJPY': 'AUDJPY=X', 'CADJPY': 'CADJPY=X',
+    'USDCAD': 'USDCAD=X',
+    # Forex (crosses)
+    'EURGBP': 'EURGBP=X', 'EURJPY': 'EURJPY=X', 'GBPJPY': 'GBPJPY=X',
+    'AUDJPY': 'AUDJPY=X', 'CADJPY': 'CADJPY=X', 'CHFJPY': 'CHFJPY=X',
+    'EURCHF': 'EURCHF=X', 'EURCAD': 'EURCAD=X', 'AUDCAD': 'AUDCAD=X',
+    'AUDNZD': 'AUDNZD=X', 'GBPCAD': 'GBPCAD=X', 'GBPAUD': 'GBPAUD=X',
+    'NZDJPY': 'NZDJPY=X',
     # Crypto
     'BTCUSD': 'BTC-USD', 'ETHUSD': 'ETH-USD', 'BNBUSD': 'BNB-USD',
+    'LTCUSD': 'LTC-USD', 'XRPUSD': 'XRP-USD',
     # Indices
-    'US30': '^DJI', 'US500': '^GSPC', 'US100': '^NDX',
-    # Commodities
-    'XAUUSD': 'GC=F', 'GOLD': 'GC=F', 'SILVER': 'SI=F', 'XAGUSD': 'SI=F',
-    'OIL': 'CL=F', 'XBRUSD': 'BZ=F',
+    'US30':   '^DJI',   'US500':  '^GSPC', 'US100':  '^NDX',
+    'NAS100': '^NDX',   'SPX500': '^GSPC', 'GER30':  '^GDAXI',
+    'UK100':  '^FTSE',  'JPN225': '^N225',
+    # Commodities (note: Yahoo may not return intraday for futures, we fall
+    # back to daily candles inside fetch_candles when intraday is empty).
+    'XAUUSD': 'GC=F', 'GOLD':   'GC=F',
+    'XAGUSD': 'SI=F', 'SILVER': 'SI=F',
+    'USOIL':  'CL=F', 'OIL':    'CL=F', 'WTIUSD': 'CL=F',
+    'UKOIL':  'BZ=F', 'XBRUSD': 'BZ=F', 'BRENT':  'BZ=F',
 }
 
 # Yahoo Finance interval codes
@@ -42,9 +55,19 @@ YF_MAX_DAYS: Dict[str, int] = {
 
 
 def _to_yf_ticker(symbol: str) -> str:
-    """Convert a trading symbol to a Yahoo Finance ticker."""
-    upper = symbol.upper().replace('-', '').replace('_', '').replace('/', '')
-    return TICKER_MAP.get(upper, upper)
+    """Convert a trading symbol to a Yahoo Finance ticker.
+
+    Strips IQ Option's ``-OTC`` suffix and other separators before lookup so
+    that the same map can resolve both IQ Option and MT5 symbols.
+    """
+    cleaned = symbol.upper().replace('-OTC', '').replace('_OTC', '')
+    cleaned = cleaned.replace('-', '').replace('_', '').replace('/', '')
+    if cleaned in TICKER_MAP:
+        return TICKER_MAP[cleaned]
+    # Last resort: forex pair heuristic (e.g. 6 letters → add Yahoo "=X").
+    if len(cleaned) == 6 and cleaned.isalpha():
+        return f"{cleaned}=X"
+    return cleaned
 
 
 def _resample_to_4h(df) -> 'pd.DataFrame':
@@ -102,6 +125,24 @@ def fetch_candles(
             interval=fetch_interval,
             auto_adjust=True,
         )
+
+        # Some symbols (especially futures used for commodities like GC=F,
+        # CL=F, SI=F) don't return intraday data. Fall back to daily candles
+        # so the backtest still runs instead of erroring out.
+        if (df is None or df.empty) and fetch_interval not in ('1d', '1wk', '1mo'):
+            logger.warning(
+                f"No intraday data for {ticker_sym} @ {fetch_interval}; "
+                f"retrying with 1d to keep the backtest alive."
+            )
+            try:
+                df = ticker.history(
+                    start=(end_date - timedelta(days=YF_MAX_DAYS['1d'])).strftime('%Y-%m-%d'),
+                    end=end_date.strftime('%Y-%m-%d'),
+                    interval='1d',
+                    auto_adjust=True,
+                )
+            except Exception:
+                df = None
 
         if df is None or df.empty:
             logger.warning(f"No data returned for {ticker_sym} {interval}")

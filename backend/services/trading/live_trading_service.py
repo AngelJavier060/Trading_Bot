@@ -83,6 +83,7 @@ class BotStatus:
     is_scanning: bool = False
     platform: str = ""
     account_type: str = ""
+    mode: str = "manual"  # 'auto' | 'manual' — refleja trading_mode para la UI
     balance: float = 0.0
     total_trades: int = 0
     winning_trades: int = 0
@@ -123,6 +124,7 @@ class BotStatus:
             'is_scanning': bool(self.is_scanning),
             'platform': str(self.platform) if self.platform else "",
             'account_type': str(self.account_type) if self.account_type else "",
+            'mode': str(self.mode) if self.mode else "manual",
             'balance': float(self.balance) if self.balance else 0.0,
             'total_trades': int(self.total_trades),
             'winning_trades': int(self.winning_trades),
@@ -323,6 +325,7 @@ class LiveTradingService:
         self.status.is_running = True
         self.status.platform = platform
         self.status.account_type = account_type
+        self.status.mode = self.trading_mode
         self.status.started_at = datetime.now()
         self.status.errors = []
         
@@ -366,6 +369,11 @@ class LiveTradingService:
         try:
             # Importante: permitir que trades manuales se cierren aunque el bot no esté corriendo.
             self._settle_due_trades()
+        except Exception:
+            pass
+        # Sincronizar saldo con IQ/MT5 en cada consulta (web + app ven el mismo valor).
+        try:
+            self._update_balance()
         except Exception:
             pass
         return self.status.to_dict()

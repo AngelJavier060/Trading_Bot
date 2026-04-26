@@ -21,16 +21,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Flutter / Dart
-apptrading/.dart_tool/
-apptrading/.flutter-plugins
-apptrading/.flutter-plugins-dependencies
-apptrading/build/
-apptrading/.pub-cache/
-apptrading/.pub/
-apptrading/android/.gradle/
-apptrading/ios/.symlinks/
-apptrading/ios/Pods/
+# Flutter mobile app (lives in its own repo, do NOT commit from here)
+apptrading/
+
 
 # Virtual environments
 venv/

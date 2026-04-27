@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 import pandas as pd
 import os
+import sys
 from services.trading_service import trading_service
 from api.utils.validators import validate_schema
 from models.schemas import ConnectSchema
@@ -19,6 +20,27 @@ except ImportError:
 # No hay servidor predeterminado — el broker lo aporta el usuario en cada conexión.
 # Ejemplos comunes: 'AdmiralsSC-Demo', 'ICMarkets-Demo02', 'Pepperstone-Demo', etc.
 
+
+def _mt5_blocked_reason_not_windows() -> str | None:
+    """
+    MetaTrader5 para Python habla con el terminal de escritorio; en Linux/macOS
+    de un VPS típico no hay terminal → conectar siempre falla o no aplica.
+    Override: MT5_ALLOW_NON_WINDOWS=true (p. ej. Wine o setup especial).
+    """
+    if os.environ.get('MT5_ALLOW_NON_WINDOWS', '').lower() in ('1', 'true', 'yes'):
+        return None
+    if sys.platform != 'win32':
+        return (
+            'El backend está en un sistema que no es Windows. La API oficial de MetaTrader 5 '
+            'solo funciona en la misma máquina donde el terminal MT5 está instalado y abierto '
+            '(normalmente Windows). '
+            'Para usar MT5: ejecuta la API del bot en un PC o VPS Windows con MT5, o conéctate '
+            'solo a IQ Option desde la nube. '
+            '(Extensión LastPass u otras en el navegador no tienen relación con este error.)'
+        )
+    return None
+
+
 class MT5Controller:
     def __init__(self):
         self.current_account = None
@@ -30,11 +52,23 @@ class MT5Controller:
     @validate_schema(ConnectSchema)
     def connect(self, validated_data: ConnectSchema):
         try:
+            blocked = _mt5_blocked_reason_not_windows()
+            if blocked:
+                return jsonify({
+                    'status': 'error',
+                    'code': 'mt5_requires_windows_terminal',
+                    'message': blocked,
+                }), 503
+
             if not MT5_AVAILABLE or mt5 is None:
                 return jsonify({
                     'status': 'error',
-                    'message': 'MetaTrader5 no está instalado. Instala con: pip install MetaTrader5'
-                }), 500
+                    'code': 'mt5_module_missing',
+                    'message': (
+                        'El módulo MetaTrader5 no está disponible en este servidor. '
+                        'En Windows: pip install MetaTrader5 y terminal MT5 abierto.'
+                    ),
+                }), 503
             
             credentials = validated_data.credentials
             login = credentials.login
@@ -128,17 +162,22 @@ class MT5Controller:
 
             if not initialized:
                 last_err = mt5.last_error() if hasattr(mt5, 'last_error') else ('unknown', 'unknown')
+                hint = ''
+                if sys.platform != 'win32':
+                    hint = (
+                        ' En sistemas no Windows no hay rutas de terminal MT5; despliega el backend en Windows.'
+                    )
                 return jsonify({
                     'status': 'error',
+                    'code': 'mt5_init_failed',
                     'message': (
                         'No se pudo inicializar MetaTrader 5. '
-                        'Verifica que: (1) el terminal MT5 de Pepperstone esté instalado y ABIERTO, '
-                        '(2) la ruta del terminal sea correcta. '
-                        f'Error MT5: {last_err}'
+                        'En Windows: terminal MT5 instalado y abierto; indica terminal_path si es necesario. '
+                        f'Error MT5: {last_err}.{hint}'
                     ),
                     'last_error': str(last_err),
                     'attempted_paths': attempted_paths
-                }), 500
+                }), 503
 
             # Check if terminal is already logged in (common when terminal is running)
             account_info = mt5.account_info()

@@ -7,7 +7,7 @@ import {
   Sun, Moon, Globe, Coins, Download
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../../services/api';
+import api, { getPublicApiBaseUrl } from '../../services/api';
 import LightweightProChart from '../charts/LightweightProChart';
 import TradingViewProChart from '../charts/TradingViewProChart';
 import { setTvDatafeedPlatform } from '../../utils/tvDatafeed';
@@ -3749,7 +3749,7 @@ const TradingDashboard: React.FC = () => {
     } catch (error) {
       // Not connected via direct check, try broker status
       try {
-        const brokerStatus = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000'}/api/broker/status`);
+        const brokerStatus = await fetch(`${getPublicApiBaseUrl()}/api/broker/status`);
         const data = await brokerStatus.json();
         if (data.iqoption?.connected) {
           setIqConnected(true);
@@ -3836,7 +3836,7 @@ const TradingDashboard: React.FC = () => {
   // balance_update / trade_timeout events the moment IQ Option settles an
   // order — no more waiting for the 3-8 s polling interval.
   useEffect(() => {
-    const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000';
+    const BASE_URL = getPublicApiBaseUrl();
     let es: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 

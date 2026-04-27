@@ -4,20 +4,20 @@
     "losses": 58,
     "total": 236,
     "total_confidence": 16816.011928724358,
-    "last_updated": "2026-04-27T16:25:06.606023"
+    "last_updated": "2026-04-27T18:54:36.586683"
   },
   "macd": {
     "wins": 3,
     "losses": 3,
     "total": 6,
     "total_confidence": 433.0,
-    "last_updated": "2026-04-27T16:25:06.607035"
+    "last_updated": "2026-04-27T18:54:36.587717"
   },
   "bollinger": {
     "wins": 0,
     "losses": 1,
     "total": 1,
     "total_confidence": 56.2,
-    "last_updated": "2026-04-27T16:25:06.606165"
+    "last_updated": "2026-04-27T18:54:36.586901"
   }
 }

@@ -8,11 +8,12 @@
  *
  * The library expects a particular shape for each callback; we mirror those
  * shapes verbatim because the Charting Library is loaded as a non-typed UMD
- * global from `/charting_library/`. To keep this file dependency-free and
- * type-safe we declare the bits we need locally.
+ * global from `/charting_library/`. We declare the bits we need locally for types.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000';
+import { getPublicApiBaseUrl } from '../services/api';
+
+const API_BASE = getPublicApiBaseUrl();
 const TV_API = `${API_BASE}/api/tv`;
 
 /**

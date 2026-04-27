@@ -7,6 +7,7 @@ import {
   BarChart3, Brain, MessageCircle, Sparkles,
   RefreshCw, ChevronDown, ChevronUp
 } from 'lucide-react';
+import { getPublicApiBaseUrl } from '../../services/api';
 
 interface AssistantMessage {
   id: string;
@@ -25,7 +26,7 @@ interface TradingAssistantProps {
   isTrading?: boolean;
 }
 
-const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000'}/api/assistant`;
+const API_BASE = `${getPublicApiBaseUrl()}/api/assistant`;
 
 const TradingAssistant: React.FC<TradingAssistantProps> = ({
   onTradeAnalyzed,

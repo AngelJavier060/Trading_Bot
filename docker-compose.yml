@@ -1,5 +1,12 @@
 version: "3.9"
 
+# Local: backend con volumen para editar código en caliente.
+# Producción: quita `volumes:` de trading-backend o usa solo la imagen construida;
+#   un volumen vacío sobre /app borraría el código de la imagen.
+#
+# El front solo “hornea” NEXT_PUBLIC_API_URL en `docker build` (ARG en Dockerfile).
+#   Cambiar la URL en runtime en `environment:` NO actualiza el JS del cliente; hay que reconstruir.
+
 services:
   trading-db:
     image: postgres:16-alpine
@@ -12,6 +19,11 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     # No exponemos el puerto 5432 al host para evitar conflictos con otros PostgreSQL
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trading_user -d trading_bot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   trading-backend:
     build:
@@ -20,7 +32,8 @@ services:
     container_name: trading_backend
     restart: unless-stopped
     depends_on:
-      - trading-db
+      trading-db:
+        condition: service_healthy
     environment:
       PG_HOST: trading-db
       PG_PORT: 5432
@@ -29,9 +42,11 @@ services:
       PG_DATABASE: trading_bot
       ALLOW_SQLITE_FALLBACK: "false"
       SQL_DEBUG: "false"
+      FLASK_DEBUG: "false"
       SECRET_KEY: "prod-secret-change-me"
-      # Permitir que el frontend en dominio hable con la API (CORS)
+      # Orígenes del panel web (coma-separados). Incluye www. si lo usas.
       CORS_ORIGINS: "https://trading.improvement-solution.com"
+      FRONTEND_URL: "https://trading.improvement-solution.com"
     ports:
       # Exponemos el backend en el puerto 5001 del host para no chocar con otros servicios
       - "5001:5000"
@@ -48,6 +63,7 @@ services:
     restart: unless-stopped
     depends_on:
       - trading-backend
+    # Solo afecta al servidor Node del front en runtime; el bundle ya compiló la URL del API.
     environment:
       NEXT_PUBLIC_API_URL: "https://api-trading.improvement-solution.com"
     ports:

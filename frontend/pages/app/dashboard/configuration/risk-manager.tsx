@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { toast } from 'react-hot-toast';
+import { getPublicApiBaseUrl } from '@/services/api';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000';
+const BASE_URL = getPublicApiBaseUrl();
 
 interface GlobalRiskConfig {
   // Pérdidas

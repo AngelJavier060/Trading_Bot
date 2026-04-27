@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2, Eye, EyeOff, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../../services/api';
+import api, { getPublicApiBaseUrl } from '../../services/api';
 
 interface ConnectionModalProps {
   isOpen: boolean;
@@ -10,6 +10,15 @@ interface ConnectionModalProps {
   onSuccess: (accountInfo: any) => void;
   /** Al abrir MT5 desde Config, forzar modo demo/real esperado en el formulario */
   mt5PreferredDemo?: boolean | null;
+}
+
+function formatApiHost(apiBaseUrl: string): string {
+  try {
+    const host = new URL(apiBaseUrl).host;
+    return host || apiBaseUrl;
+  } catch {
+    return apiBaseUrl;
+  }
 }
 
 const ConnectionModal: React.FC<ConnectionModalProps> = ({
@@ -231,11 +240,29 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
             </div>
           ) : (
             <div className="space-y-4">
-              {/* MT5 prerequisite notice */}
+              {/* MT5: misma API que IQ; la diferencia es qué puede hacer el servidor */}
+              <div className="rounded-lg border border-slate-600 bg-slate-900/50 p-3 text-[11px] text-slate-400 space-y-1">
+                <p>
+                  <span className="text-slate-300 font-semibold">Servidor de la API (producción o local):</span>{' '}
+                  <span className="font-mono text-cyan-300/90 break-all">{formatApiHost(getPublicApiBaseUrl())}</span>
+                </p>
+                <p className="text-slate-500">
+                  IQ Option y MT5 envían datos a <strong>esta misma URL</strong>. No es un fallo de “conexión local”: si IQ funciona, la web/app ya apunta al backend correcto.
+                </p>
+              </div>
               <div className="bg-amber-900/25 border border-amber-700/60 rounded-lg p-3 text-xs text-amber-300 space-y-1">
-                <p className="font-semibold">⚠️ Requisitos para conectar MT5:</p>
-                <p>1. El terminal <strong>Pepperstone MetaTrader 5</strong> debe estar <strong>instalado y abierto</strong> en este PC.</p>
-                <p>2. El módulo Python debe estar instalado: <code className="bg-slate-900 px-1 rounded">pip install MetaTrader5</code></p>
+                <p className="font-semibold">⚠️ Por qué MT5 suele fallar en la nube</p>
+                <p>
+                  El login MT5 lo ejecuta el <strong>backend Python en el servidor</strong>, no tu navegador. Ahí hace falta el{' '}
+                  <strong>terminal MetaTrader 5 instalado y abierto en Windows</strong> en la misma máquina.
+                </p>
+                <p>
+                  Los hosts típicos de producción (Linux: Ubuntu, Docker, etc.) <strong>no tienen</strong> ese terminal → la API responde que no es Windows.{' '}
+                  <strong>IQ Option sí funciona en la nube</strong> porque habla con los servidores del bróker por internet.
+                </p>
+                <p className="text-amber-200/90">
+                  Para MT5: API del bot en un <strong>VPS/PC Windows</strong> con MT5, o usa solo IQ desde este panel.
+                </p>
               </div>
               {errorDetail && (
                 <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-xs text-red-300 break-words">

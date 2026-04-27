@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import { getPublicApiBaseUrl } from '@/services/api';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
+const BASE_URL = getPublicApiBaseUrl();
 
 const IQ_ASSETS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'GBPJPY', 'XAUUSD', 'BTCUSD'];
 const EXPIRATION_OPTIONS = [1, 2, 3, 5, 10, 15, 30, 60];

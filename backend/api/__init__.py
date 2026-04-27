@@ -57,15 +57,17 @@ def create_app():
             return origin
         return None
 
+    # Una sola regla: el front en producción está en otro dominio que la API (login en /login, API en /api/*).
+    _cors_resource_cfg = {
+        "origins": origins,
+        "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True,
+    }
     CORS(
         app,
         resources={
-            r"/api/*": {
-                "origins": origins,
-                "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-                "allow_headers": ["Content-Type", "Authorization"],
-                "supports_credentials": True,
-            }
+            r"/*": _cors_resource_cfg,
         },
     )
 

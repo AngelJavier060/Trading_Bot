@@ -3,7 +3,8 @@ FROM node:20-alpine AS builder
 # Directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# NEXT_PUBLIC_* se “hornea” en el build del cliente; hay que pasarlo en build time.
+# NEXT_PUBLIC_* se “hornea” en el build del cliente; hay que pasarlo en build time (build.args).
+# La variable en runtime del contenedor no cambia el JS ya generado en .next — reconstruir la imagen.
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 

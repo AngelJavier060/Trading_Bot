@@ -1,4 +1,10 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
+/** URL base expuesta al navegador (build: NEXT_PUBLIC_API_URL). IQ y MT5 usan la misma. */
+export function getPublicApiBaseUrl(): string {
+  const raw = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000').trim();
+  return raw.replace(/\/+$/, '') || 'http://127.0.0.1:5000';
+}
+
+const BASE_URL = getPublicApiBaseUrl();
 
 /** Respuesta de GET /api/data/candles (incluye aviso cuando hay fallback de bróker). */
 export type CandlesApiResponse = {

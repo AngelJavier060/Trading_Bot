@@ -1,9 +1,9 @@
 {
   "status": "success",
   "symbol": "EURUSD",
-  "started_at": "2026-04-26T08:53:02.213217",
+  "started_at": "2026-04-26T15:35:20.474526",
   "candles": 600,
-  "finished_at": "2026-04-26T08:53:02.783128",
+  "finished_at": "2026-04-26T15:35:20.699941",
   "models": {
     "xgboost": "success",
     "lstm": "error"

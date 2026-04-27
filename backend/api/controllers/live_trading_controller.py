@@ -403,7 +403,10 @@ class LiveTradingController:
     def get_trade_history(self):
         """Get trade history."""
         try:
-            limit = int(request.args.get('limit', 50))
+            try:
+                limit = int(request.args.get('limit') or 50)
+            except (TypeError, ValueError):
+                limit = 50
             account_type = request.args.get('account_type')
             
             history = self.trading_service.get_trade_history(limit, account_type)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { 
   Activity, Settings, TrendingUp, BarChart3, Bot, Bell, Clock, 
@@ -56,6 +56,52 @@ const IQ_OPTION_ASSETS = {
     { symbol: 'GBPAUD-OTC',  name: 'GBP/AUD OTC',  type: 'otc' },
   ]
 };
+
+/** Binarias vs OTC: unifica claves legacy (`marketType: "OTC"`, "Binarias", etc.). */
+function resolveIqMarketType(c: { iqMarketType?: string; marketType?: string } | null | undefined): 'binary' | 'otc' {
+  const raw = c?.iqMarketType ?? c?.marketType;
+  if (raw == null || raw === '') return 'binary';
+  const s = String(raw).toLowerCase().trim();
+  if (s === 'otc' || s === 'otc (24/7)') return 'otc';
+  if (s === 'binarias' || s === 'binaria' || s === 'binary' || s === 'forex') return 'binary';
+  return 'binary';
+}
+
+/** Al cargar localStorage: priorizar lo guardado en `iqMarketType` y, si no existe, en `marketType` (otras pantallas). */
+function resolveIqMarketTypeFromSaved(parsed: Record<string, unknown> | null, merged: { iqMarketType?: string; marketType?: string }): 'binary' | 'otc' {
+  if (parsed && Object.prototype.hasOwnProperty.call(parsed, 'iqMarketType') && parsed.iqMarketType != null && String(parsed.iqMarketType) !== '') {
+    return resolveIqMarketType({ iqMarketType: String(parsed.iqMarketType) });
+  }
+  if (parsed && Object.prototype.hasOwnProperty.call(parsed, 'marketType') && parsed.marketType != null && String(parsed.marketType) !== '') {
+    return resolveIqMarketType({ marketType: String(parsed.marketType) });
+  }
+  return resolveIqMarketType(merged);
+}
+
+function mapSelectedAssetsToBinary(symbols: string[] | undefined): string[] {
+  const defaults = ['EURUSD', 'GBPUSD', 'USDJPY'];
+  if (!symbols?.length) return defaults;
+  const allowed = new Set(IQ_OPTION_ASSETS.binary.map(a => a.symbol));
+  const out: string[] = [];
+  for (const s of symbols) {
+    const base = s.replace(/-OTC$/i, '');
+    if (allowed.has(base) && !out.includes(base)) out.push(base);
+  }
+  return out.length ? out : defaults;
+}
+
+function mapSelectedAssetsToOtc(symbols: string[] | undefined): string[] {
+  const defaults = IQ_OPTION_ASSETS.otc.slice(0, 3).map(a => a.symbol);
+  if (!symbols?.length) return defaults;
+  const allowed = new Set(IQ_OPTION_ASSETS.otc.map(a => a.symbol));
+  const out: string[] = [];
+  for (const s of symbols) {
+    const base = s.replace(/-OTC$/i, '');
+    const otcSym = `${base}-OTC`;
+    if (allowed.has(otcSym) && !out.includes(otcSym)) out.push(otcSym);
+  }
+  return out.length ? out : defaults;
+}
 
 const MT5_ASSETS = [
   // Forex
@@ -614,7 +660,7 @@ const ConfigurationTab: React.FC<{
   const [expandedMT5Strategy, setExpandedMT5Strategy] = useState<string | null>(null);
 
   const getIQAssets = () => {
-    return config.iqMarketType === 'otc' ? IQ_OPTION_ASSETS.otc : IQ_OPTION_ASSETS.binary;
+    return resolveIqMarketType(config) === 'otc' ? IQ_OPTION_ASSETS.otc : IQ_OPTION_ASSETS.binary;
   };
 
   const toggleIQParam = (strategy: string) =>
@@ -751,17 +797,33 @@ const ConfigurationTab: React.FC<{
                 <span className="material-symbols-outlined text-base">language</span> Tipo de Mercado
               </h3>
               <div className="flex gap-3 mb-2">
-                <button onClick={() => onConfigChange({ ...config, iqMarketType: 'binary' })}
-                  className={`flex-1 py-2.5 rounded-full text-sm font-semibold transition-all ${config.iqMarketType !== 'otc' ? 'bg-[#3f5c8c] text-white shadow-sm' : 'bg-[#f2f4f6] text-[#4e6073] hover:bg-[#eceef0]'}`}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onConfigChange({
+                      ...config,
+                      iqMarketType: 'binary',
+                      selectedIQAssets: mapSelectedAssetsToBinary(config.selectedIQAssets),
+                    })
+                  }
+                  className={`flex-1 py-2.5 rounded-full text-sm font-semibold transition-all ${resolveIqMarketType(config) !== 'otc' ? 'bg-[#3f5c8c] text-white shadow-sm' : 'bg-[#f2f4f6] text-[#4e6073] hover:bg-[#eceef0]'}`}>
                   Binarias
                 </button>
-                <button onClick={() => onConfigChange({ ...config, iqMarketType: 'otc' })}
-                  className={`flex-1 py-2.5 rounded-full text-sm font-semibold transition-all ${config.iqMarketType === 'otc' ? 'bg-[#7c3aed] text-white shadow-sm' : 'bg-[#f2f4f6] text-[#4e6073] hover:bg-[#eceef0]'}`}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onConfigChange({
+                      ...config,
+                      iqMarketType: 'otc',
+                      selectedIQAssets: mapSelectedAssetsToOtc(config.selectedIQAssets),
+                    })
+                  }
+                  className={`flex-1 py-2.5 rounded-full text-sm font-semibold transition-all ${resolveIqMarketType(config) === 'otc' ? 'bg-[#7c3aed] text-white shadow-sm' : 'bg-[#f2f4f6] text-[#4e6073] hover:bg-[#eceef0]'}`}>
                   OTC
                 </button>
               </div>
               <p className="text-xs text-[#747780]">
-                {config.iqMarketType === 'otc' ? '⚠️ OTC: 24/7, mayor volatilidad' : '✓ Binarias: horario de mercado estándar'}
+                {resolveIqMarketType(config) === 'otc' ? '⚠️ OTC: 24/7, mayor volatilidad' : '✓ Binarias: horario de mercado estándar'}
               </p>
             </div>
           </div>
@@ -890,7 +952,7 @@ const ConfigurationTab: React.FC<{
                   const isChecked = config.iqStrategies?.includes(name) || false;
                   const isExpanded = expandedIQStrategy === name;
                   const recTf = RECOMMENDED_TIMEFRAME[name];
-                  const isOTC = config.iqMarketType === 'otc';
+                  const isOTC = resolveIqMarketType(config) === 'otc';
                   const isIchimoku = name === 'Ichimoku Cloud';
                   const blockedOTC = isIchimoku && isOTC;
                   return (
@@ -1522,6 +1584,8 @@ const LiveTradingTab: React.FC<{
   const [showAllHistory, setShowAllHistory] = useState(false); // Toggle between today only or all history
   const TRADES_PER_PAGE = 25;
   const [currentPage, setCurrentPage] = useState(1);
+  /** Evita spam de toasts: una advertencia por combinación bróker / mercado con fallback de velas. */
+  const candlesDegradedToastKeyRef = useRef<string>('');
 
   // Pagination helpers
   const totalPages = Math.ceil(dailyTrades.length / TRADES_PER_PAGE);
@@ -1648,6 +1712,17 @@ const LiveTradingTab: React.FC<{
 
     try {
       const res = await api.getCandles(normalizedSymbol, tf, count, targetPlatform);
+      if (res?.degraded) {
+        const warnKey = `${targetPlatform}-${marketType}`;
+        if (candlesDegradedToastKeyRef.current !== warnKey) {
+          candlesDegradedToastKeyRef.current = warnKey;
+          toast(
+            res.degraded_message
+              || 'Velas de respaldo: el bróker no está disponible en este servidor.',
+            { icon: '⚠️', duration: 7000 }
+          );
+        }
+      }
       if (res?.data?.length) return res.data;
 
       // Empty payload. For MT5 try the dedicated endpoint (which uses
@@ -3434,11 +3509,13 @@ const TradingDashboard: React.FC = () => {
           parsed.iqStrategies = ['EMA + RSI'];
           parsed.mt5Strategies = ['Ichimoku Cloud'];
         }
-        // Migrate: ensure selectedIQAssets has defaults if empty
-        if (!parsed.selectedIQAssets || parsed.selectedIQAssets.length === 0) {
-          parsed.selectedIQAssets = ['EURUSD', 'GBPUSD', 'USDJPY'];
-        }
-        setConfig(prev => ({ ...prev, ...parsed }));
+        setConfig(prev => {
+          const m = { ...prev, ...parsed };
+          const mkt = resolveIqMarketTypeFromSaved(parsed as Record<string, unknown>, m);
+          const selectedIQ =
+            mkt === 'otc' ? mapSelectedAssetsToOtc(m.selectedIQAssets) : mapSelectedAssetsToBinary(m.selectedIQAssets);
+          return { ...m, iqMarketType: mkt, selectedIQAssets: selectedIQ };
+        });
       }
     } catch (e) {
       console.error('Error loading config from localStorage:', e);
@@ -3708,7 +3785,7 @@ const TradingDashboard: React.FC = () => {
   const startLiveTradingNow = async () => {
     let selectedSymbols: string[] = [];
     if (platform === 'iqoption') {
-      const assets = config.iqMarketType === 'otc' ? IQ_OPTION_ASSETS.otc : IQ_OPTION_ASSETS.binary;
+      const assets = resolveIqMarketType(config) === 'otc' ? IQ_OPTION_ASSETS.otc : IQ_OPTION_ASSETS.binary;
       selectedSymbols = config.selectedIQAssets?.length > 0
         ? config.selectedIQAssets
         : assets.map(a => a.symbol);
@@ -3817,7 +3894,7 @@ const TradingDashboard: React.FC = () => {
       // Get selected symbols based on platform and market type
       let symbolsToScan: string[] = [];
       if (platform === 'iqoption') {
-        const assets = config.iqMarketType === 'otc' ? IQ_OPTION_ASSETS.otc : IQ_OPTION_ASSETS.binary;
+        const assets = resolveIqMarketType(config) === 'otc' ? IQ_OPTION_ASSETS.otc : IQ_OPTION_ASSETS.binary;
         symbolsToScan = config.selectedIQAssets?.length > 0 
           ? config.selectedIQAssets 
           : assets.slice(0, 6).map(a => a.symbol);  // Default to first 6 assets
@@ -4133,8 +4210,15 @@ const TradingDashboard: React.FC = () => {
               isScanning={isScanning}
               selectedSymbol={selectedSymbol}
               onSymbolChange={setSelectedSymbol}
-              marketType={config.iqMarketType}
-              onMarketTypeChange={(type) => setConfig({ ...config, iqMarketType: type })}
+              marketType={resolveIqMarketType(config)}
+              onMarketTypeChange={(type) =>
+                setConfig({
+                  ...config,
+                  iqMarketType: type,
+                  selectedIQAssets:
+                    type === 'otc' ? mapSelectedAssetsToOtc(config.selectedIQAssets) : mapSelectedAssetsToBinary(config.selectedIQAssets),
+                })
+              }
               selectedAssets={platform === 'iqoption' ? config.selectedIQAssets : config.selectedMT5Assets}
               configStrategies={platform === 'iqoption' ? config.iqStrategies : config.mt5Strategies}
               configIndicators={{
@@ -4157,7 +4241,7 @@ const TradingDashboard: React.FC = () => {
               isRunning={isBacktesting}
               errorMessage={backtestError}
               platform={platform}
-              marketType={config.iqMarketType}
+              marketType={resolveIqMarketType(config)}
               selectedLiveAssets={platform === 'iqoption' ? config.selectedIQAssets : config.selectedMT5Assets}
             />
           )}

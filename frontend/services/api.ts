@@ -1,5 +1,14 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
 
+/** Respuesta de GET /api/data/candles (incluye aviso cuando hay fallback de bróker). */
+export type CandlesApiResponse = {
+  status: string;
+  data: Record<string, unknown>[];
+  degraded?: boolean;
+  requested_platform?: string;
+  degraded_message?: string;
+};
+
 const api = {
   login: async (credentials: { username: string; password: string; accountType: string }) => {
     const response = await fetch(`${BASE_URL}/login`, {
@@ -362,7 +371,7 @@ const api = {
     timeframe: string,
     count: number = 500,
     platform?: string
-  ) => {
+  ): Promise<CandlesApiResponse> => {
     try {
       const q = new URLSearchParams();
       q.append('symbol', symbol);
@@ -370,9 +379,9 @@ const api = {
       q.append('count', String(count));
       if (platform) q.append('platform', platform);
       const response = await fetch(`${BASE_URL}/api/data/candles?${q.toString()}`);
-      const data = await response.json();
+      const data = (await response.json()) as CandlesApiResponse;
       if (!response.ok || data.status === 'error') {
-        throw new Error(data.message || 'Error al obtener velas');
+        throw new Error((data as { message?: string }).message || 'Error al obtener velas');
       }
       return data;
     } catch (error: any) {

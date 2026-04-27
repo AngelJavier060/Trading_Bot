@@ -20,16 +20,42 @@ def create_app():
     app.config["SECRET_KEY"] = SECRET_KEY
     
     # Habilitar CORS
-    # - Dev: localhost/127.0.0.1 en cualquier puerto
-    # - Prod: lista explícita en CORS_ORIGINS (separada por comas)
+    # - Dev: localhost/127.0.0.1 en cualquier puerto (si no hay orígenes explícitos)
+    # - Prod: CORS_ORIGINS=https://tu-dominio.com,https://otro.com
+    #   y/o FRONTEND_URL=https://tu-dominio.com (una sola URL del panel web)
     import re
-    cors_env = os.environ.get("CORS_ORIGINS", "").strip()
+    cors_env = (os.environ.get("CORS_ORIGINS") or "").strip()
     allowed_origins: list[str] = []
-    if cors_env:
-        allowed_origins.extend([o.strip() for o in cors_env.split(",") if o.strip()])
+    for raw in cors_env.replace("\n", ",").split(","):
+        o = raw.strip().rstrip("/")
+        if o:
+            allowed_origins.append(o)
+    frontend_url = (os.environ.get("FRONTEND_URL") or "").strip().rstrip("/")
+    if frontend_url and frontend_url not in allowed_origins:
+        allowed_origins.append(frontend_url)
+
+    # Sin duplicados, orden estable
+    allowed_origins = list(dict.fromkeys(allowed_origins))
+    normalized_allowed = frozenset(o.rstrip("/") for o in allowed_origins)
 
     localhost_regex = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
-    origins = allowed_origins if allowed_origins else localhost_regex
+
+    # Lista de patrones/strings que entiende flask-cors (incl. regex compilado)
+    if allowed_origins:
+        origins: list = allowed_origins + [localhost_regex]
+    else:
+        origins = [localhost_regex]
+
+    def cors_allow_origin(origin: str | None) -> str | None:
+        """Misma lógica que `origins`, para handlers manuales (OPTIONS / errores)."""
+        if not origin:
+            return None
+        base = origin.rstrip("/")
+        if base in normalized_allowed:
+            return origin
+        if localhost_regex.match(origin):
+            return origin
+        return None
 
     CORS(
         app,
@@ -51,8 +77,9 @@ def create_app():
         if request.method == 'OPTIONS':
             resp = make_response('', 204)
             origin = request.headers.get('Origin', '')
-            if origin:
-                resp.headers['Access-Control-Allow-Origin'] = origin
+            allowed = cors_allow_origin(origin)
+            if allowed:
+                resp.headers['Access-Control-Allow-Origin'] = allowed
                 resp.headers['Vary'] = 'Origin'
                 resp.headers['Access-Control-Allow-Credentials'] = 'true'
                 resp.headers['Access-Control-Allow-Methods'] = (
@@ -123,8 +150,9 @@ def create_app():
         # Añadir headers CORS al error para que el navegador NO lo bloquee
         # como un fallo de preflight cuando en realidad es un 500 del endpoint.
         origin = request.headers.get('Origin', '')
-        if origin:
-            resp.headers['Access-Control-Allow-Origin'] = origin
+        allowed_o = cors_allow_origin(origin)
+        if allowed_o:
+            resp.headers['Access-Control-Allow-Origin'] = allowed_o
             resp.headers['Vary'] = 'Origin'
             resp.headers['Access-Control-Allow-Credentials'] = 'true'
         return resp, 500

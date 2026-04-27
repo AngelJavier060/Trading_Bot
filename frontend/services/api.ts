@@ -309,19 +309,25 @@ const api = {
     }
   },
 
-  connectMT5: async (credentials: {
-    login: number;
-    password: string;
-    server: string;
-    terminal_path?: string;
-  }) => {
+  connectMT5: async (
+    credentials: {
+      login: number;
+      password: string;
+      server: string;
+      terminal_path?: string;
+    },
+    options?: { is_demo?: boolean }
+  ) => {
     try {
       const response = await fetch(`${BASE_URL}/api/mt5/connect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ credentials }),
+        body: JSON.stringify({
+          credentials,
+          is_demo: options?.is_demo !== false,
+        }),
       });
 
       if (!response.ok) {
@@ -333,6 +339,20 @@ const api = {
     } catch (error: any) {
       throw new Error(error.message || 'Error en la conexión');
     }
+  },
+
+  disconnectMT5: async () => {
+    const response = await fetch(`${BASE_URL}/api/mt5/disconnect`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || 'Error al desconectar MT5');
+    }
+    return data;
+  },
+
+  getMT5Status: async () => {
+    const response = await fetch(`${BASE_URL}/api/mt5/status`);
+    return await response.json();
   },
 
   getMT5Symbols: async () => {

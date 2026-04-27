@@ -96,6 +96,19 @@ class TradingService:
         self.sessions['quotex'] = driver
         self.active_platform = 'quotex'
 
+    def disconnect_mt5(self):
+        """Cierra solo MetaTrader 5 (deja IQ Option u otros brokers intactos)."""
+        if self.sessions['mt5']:
+            try:
+                import MetaTrader5 as mt5
+                mt5.shutdown()
+            except Exception as e:
+                logging.error(f"Error al cerrar MT5: {e}")
+            self.sessions['mt5'] = None
+            if self.active_platform == 'mt5':
+                self.active_platform = None
+            logging.info("Sesión MT5 cerrada")
+
     def disconnect_all(self):
         # IQ Option
         if self.sessions['iqoption']:

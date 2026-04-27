@@ -645,24 +645,29 @@ const ConfigurationTab: React.FC<{
   iqBalance: number;
   mt5Balance: number;
   iqAccountType: 'PRACTICE' | 'REAL';
+  mt5AccountType: 'DEMO' | 'REAL';
   onConnectIQ: () => void;
   onConnectMT5: () => void;
   onDisconnectIQ: () => Promise<void>;
+  onDisconnectMT5: () => Promise<void>;
   onSwitchIQAccount: (type: 'PRACTICE' | 'REAL') => Promise<void>;
+  /** Abre el modal MT5 con preferencia demo/real (reconexión con otro servidor/cuenta). */
+  onPrepareMT5Reconnect: (asDemo: boolean) => void;
   config: any;
   onConfigChange: (config: any) => void;
   onSaveConfig: () => void;
   configPlatform: 'iqoption' | 'mt5';
   onConfigPlatformChange: (p: 'iqoption' | 'mt5') => void;
 }> = ({ 
-  iqConnected, mt5Connected, iqBalance, mt5Balance, iqAccountType,
-  onConnectIQ, onConnectMT5, onDisconnectIQ, onSwitchIQAccount,
+  iqConnected, mt5Connected, iqBalance, mt5Balance, iqAccountType, mt5AccountType,
+  onConnectIQ, onConnectMT5, onDisconnectIQ, onDisconnectMT5, onSwitchIQAccount, onPrepareMT5Reconnect,
   config, onConfigChange, onSaveConfig,
   configPlatform, onConfigPlatformChange
 }) => {
   const [expandedIQStrategy, setExpandedIQStrategy] = useState<string | null>(null);
   const [expandedMT5Strategy, setExpandedMT5Strategy] = useState<string | null>(null);
   const [iqConnBusy, setIqConnBusy] = useState<'disconnect' | 'practice' | 'real' | null>(null);
+  const [mt5ConnBusy, setMt5ConnBusy] = useState<'disconnect' | null>(null);
 
   const getIQAssets = () => {
     return resolveIqMarketType(config) === 'otc' ? IQ_OPTION_ASSETS.otc : IQ_OPTION_ASSETS.binary;
@@ -1150,24 +1155,87 @@ const ConfigurationTab: React.FC<{
           </div>
 
           {/* Connection card */}
-          <div className="bg-white p-5 rounded-xl border border-[#c4c6d0]/30 shadow-[0_4px_20px_rgba(112,141,192,0.08)] flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className={`w-3 h-3 rounded-full flex-shrink-0 ${mt5Connected ? 'bg-emerald-500 shadow-emerald-400/50 shadow-md' : 'bg-red-500'}`} />
-              <div>
-                <p className="font-semibold text-[#191c1e]">MetaTrader 5</p>
-                <p className="text-xs text-[#4e6073]">Forex &amp; CFDs</p>
-                {mt5Connected && <p className="text-sm text-emerald-600 font-semibold mt-0.5">Balance: ${mt5Balance.toFixed(2)}</p>}
+          <div className="bg-white p-5 rounded-xl border border-[#c4c6d0]/30 shadow-[0_4px_20px_rgba(112,141,192,0.08)] flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className={`w-3 h-3 rounded-full flex-shrink-0 ${mt5Connected ? 'bg-emerald-500 shadow-emerald-400/50 shadow-md' : 'bg-red-500'}`} />
+                <div>
+                  <p className="font-semibold text-[#191c1e]">MetaTrader 5</p>
+                  <p className="text-xs text-[#4e6073]">Forex &amp; CFDs</p>
+                  {mt5Connected && <p className="text-sm text-emerald-600 font-semibold mt-0.5">Balance: ${mt5Balance.toFixed(2)}</p>}
+                </div>
               </div>
+              {!mt5Connected ? (
+                <button type="button" onClick={onConnectMT5}
+                  className="px-6 py-2 bg-[#3f5c8c] hover:bg-[#2d4a78] rounded-full text-sm font-semibold transition-colors text-white shrink-0">
+                  Conectar
+                </button>
+              ) : (
+                <span className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-100 shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />Conectado
+                </span>
+              )}
             </div>
-            {!mt5Connected ? (
-              <button onClick={onConnectMT5}
-                className="px-6 py-2 bg-[#3f5c8c] hover:bg-[#2d4a78] rounded-full text-sm font-semibold transition-colors text-white">
-                Conectar
-              </button>
-            ) : (
-              <span className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full text-xs font-semibold border border-emerald-100">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />MT5: Connected
-              </span>
+            {mt5Connected && (
+              <>
+                <div className="pt-1 border-t border-[#c4c6d0]/25">
+                  <p className="text-[10px] font-semibold text-[#747780] uppercase tracking-wider mb-2">Cuenta MT5 (según terminal)</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={mt5ConnBusy !== null || mt5AccountType === 'DEMO'}
+                      onClick={() => {
+                        if (mt5AccountType !== 'DEMO') onPrepareMT5Reconnect(true);
+                      }}
+                      className={`flex-1 min-w-[7rem] py-2 rounded-lg text-xs font-bold transition-all border ${
+                        mt5AccountType === 'DEMO'
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'bg-[#f2f4f6] text-[#4e6073] border-transparent hover:border-[#3f5c8c]/30'
+                      } disabled:opacity-60`}
+                    >
+                      🟢 Demo
+                    </button>
+                    <button
+                      type="button"
+                      disabled={mt5ConnBusy !== null || mt5AccountType === 'REAL'}
+                      onClick={() => {
+                        if (mt5AccountType !== 'REAL') {
+                          const ok = window.confirm(
+                            '⚠️ Para operar en REAL debes reconectar con login y servidor de cuenta live.\n\n¿Abrir conexión en modo real?'
+                          );
+                          if (ok) onPrepareMT5Reconnect(false);
+                        }
+                      }}
+                      className={`flex-1 min-w-[7rem] py-2 rounded-lg text-xs font-bold transition-all border ${
+                        mt5AccountType === 'REAL'
+                          ? 'bg-red-600 text-white border-red-600'
+                          : 'bg-[#f2f4f6] text-[#4e6073] border-transparent hover:border-red-300'
+                      } disabled:opacity-60`}
+                    >
+                      🔴 Real
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-[#747780] mt-2">
+                    Cambiar demo ↔ real implica <strong>volver a conectar</strong> con el servidor correcto del broker. El modo activo se lee del terminal MT5.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={mt5ConnBusy !== null}
+                  onClick={async () => {
+                    setMt5ConnBusy('disconnect');
+                    try {
+                      await onDisconnectMT5();
+                    } finally {
+                      setMt5ConnBusy(null);
+                    }
+                  }}
+                  className="w-full py-2 rounded-lg text-xs font-bold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50"
+                >
+                  {mt5ConnBusy === 'disconnect' ? 'Desconectando…' : 'Desconectar MetaTrader 5'}
+                </button>
+                <p className="text-[10px] text-slate-400 -mt-1">Solo cierra MT5 en el bot; IQ Option u otras sesiones no se afectan.</p>
+              </>
             )}
           </div>
 
@@ -3525,6 +3593,7 @@ const TradingDashboard: React.FC = () => {
   const [iqBalance, setIqBalance] = useState(0);
   const [mt5Balance, setMt5Balance] = useState(0);
   const [iqAccountType, setIqAccountType] = useState<'PRACTICE' | 'REAL'>('PRACTICE');
+  const [mt5AccountType, setMt5AccountType] = useState<'DEMO' | 'REAL'>('DEMO');
   
   // Trading state
   const [liveStatus, setLiveStatus] = useState<LiveStatus | null>(null);
@@ -3617,6 +3686,12 @@ const TradingDashboard: React.FC = () => {
   // Modal state
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [connectionPlatform, setConnectionPlatform] = useState<'iqoption' | 'mt5'>('iqoption');
+  const [mt5PreferredDemo, setMt5PreferredDemo] = useState<boolean | null>(null);
+
+  const closeConnectionModal = () => {
+    setConnectionModalOpen(false);
+    setMt5PreferredDemo(null);
+  };
 
   // Check connection status on mount
   useEffect(() => {
@@ -3691,6 +3766,25 @@ const TradingDashboard: React.FC = () => {
       } catch (e) {
         // Broker status not available
       }
+    }
+
+    try {
+      const mt5s = await api.getMT5Status();
+      if (mt5s.connected === true || mt5s.status === 'connected') {
+        const ai = mt5s.accountInfo;
+        if (ai) {
+          setMt5Connected(true);
+          setMt5Balance(Number(ai.balance ?? ai.equity ?? 0));
+          setMt5AccountType(
+            String(ai.account_type || 'DEMO').toUpperCase() === 'REAL' ? 'REAL' : 'DEMO'
+          );
+        }
+      } else {
+        setMt5Connected(false);
+        setMt5Balance(0);
+      }
+    } catch {
+      /* MT5 status no disponible — no forzar desconexión */
     }
   };
 
@@ -3814,11 +3908,13 @@ const TradingDashboard: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const handleConnectIQ = () => {
+    setMt5PreferredDemo(null);
     setConnectionPlatform('iqoption');
     setConnectionModalOpen(true);
   };
 
   const handleConnectMT5 = () => {
+    setMt5PreferredDemo(null);
     setConnectionPlatform('mt5');
     setConnectionModalOpen(true);
   };
@@ -3878,6 +3974,37 @@ const TradingDashboard: React.FC = () => {
     }
   };
 
+  const handleDisconnectMT5 = async () => {
+    if (!window.confirm('¿Desconectar MetaTrader 5?')) return;
+    try {
+      if (isTrading && platform === 'mt5') {
+        try {
+          await api.stopLiveTrading();
+        } catch {
+          /* continuar */
+        }
+      }
+      await api.disconnectMT5();
+      setMt5Connected(false);
+      setMt5Balance(0);
+      setMt5AccountType('DEMO');
+      setIsTrading(false);
+      setLiveStatus(prev =>
+        prev ? { ...prev, is_running: false, is_scanning: false } : null
+      );
+      toast.success('MetaTrader 5 desconectado');
+      void checkConnections();
+    } catch (e: any) {
+      toast.error(e.message || 'Error al desconectar MT5');
+    }
+  };
+
+  const handlePrepareMT5Reconnect = (asDemo: boolean) => {
+    setMt5PreferredDemo(asDemo);
+    setConnectionPlatform('mt5');
+    setConnectionModalOpen(true);
+  };
+
   const handleConnectionSuccess = (accountInfo: any) => {
     if (connectionPlatform === 'iqoption') {
       setIqConnected(true);
@@ -3888,6 +4015,9 @@ const TradingDashboard: React.FC = () => {
     } else {
       setMt5Connected(true);
       setMt5Balance(accountInfo.balance || accountInfo.equity || 0);
+      setMt5AccountType(
+        String(accountInfo.account_type || 'DEMO').toUpperCase() === 'REAL' ? 'REAL' : 'DEMO'
+      );
     }
     // Redirect to configuration tab showing only the connected platform
     setConfigPlatform(connectionPlatform === 'iqoption' ? 'iqoption' : 'mt5');
@@ -4314,10 +4444,13 @@ const TradingDashboard: React.FC = () => {
               iqBalance={iqBalance}
               mt5Balance={mt5Balance}
               iqAccountType={iqAccountType}
+              mt5AccountType={mt5AccountType}
               onConnectIQ={handleConnectIQ}
               onConnectMT5={handleConnectMT5}
               onDisconnectIQ={handleDisconnectIQ}
+              onDisconnectMT5={handleDisconnectMT5}
               onSwitchIQAccount={handleSwitchIQAccount}
+              onPrepareMT5Reconnect={handlePrepareMT5Reconnect}
               config={config}
               onConfigChange={setConfig}
               onSaveConfig={handleSaveConfig}
@@ -4405,9 +4538,10 @@ const TradingDashboard: React.FC = () => {
       {/* ── Connection Modal ── */}
       <ConnectionModal
         isOpen={connectionModalOpen}
-        onClose={() => setConnectionModalOpen(false)}
+        onClose={closeConnectionModal}
         platform={connectionPlatform}
         onSuccess={handleConnectionSuccess}
+        mt5PreferredDemo={mt5PreferredDemo}
       />
 
       {/* ── Modal de advertencia de backtesting ── */}

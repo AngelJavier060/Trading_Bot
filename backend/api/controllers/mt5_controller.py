@@ -229,14 +229,9 @@ class MT5Controller:
 
     def disconnect(self):
         try:
-            if MT5_AVAILABLE and mt5 is not None:
-                try:
-                    mt5.shutdown()
-                except Exception:
-                    pass
-            trading_service.disconnect_all()
+            trading_service.disconnect_mt5()
             self.current_account = None
-            return jsonify({'status': 'success', 'message': 'Desconexión exitosa'})
+            return jsonify({'status': 'success', 'message': 'MetaTrader 5 desconectado'})
         except Exception as e:
             logging.error(f"Error al desconectar: {str(e)}")
             return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -252,6 +247,12 @@ class MT5Controller:
                 try:
                     info = mt5.account_info()
                     if info is not None:
+                        trade_mode = getattr(info, 'trade_mode', None)
+                        if trade_mode is not None:
+                            demo_mode = getattr(mt5, 'ACCOUNT_TRADE_MODE_DEMO', 0)
+                            acct_type = 'DEMO' if int(trade_mode) == int(demo_mode) else 'REAL'
+                        else:
+                            acct_type = session.get('account_type', 'DEMO')
                         self.current_account = {
                             'login': info.login,
                             'server': info.server,
@@ -261,7 +262,7 @@ class MT5Controller:
                             'free_margin': info.margin_free,
                             'leverage': info.leverage,
                             'currency': info.currency,
-                            'account_type': session.get('account_type', 'DEMO'),
+                            'account_type': acct_type,
                         }
                         trading_service.set_mt5(self.current_account)
                         session = self.current_account

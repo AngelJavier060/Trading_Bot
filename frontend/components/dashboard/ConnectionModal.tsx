@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Loader2, Eye, EyeOff, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -8,13 +8,16 @@ interface ConnectionModalProps {
   onClose: () => void;
   platform: 'iqoption' | 'mt5';
   onSuccess: (accountInfo: any) => void;
+  /** Al abrir MT5 desde Config, forzar modo demo/real esperado en el formulario */
+  mt5PreferredDemo?: boolean | null;
 }
 
 const ConnectionModal: React.FC<ConnectionModalProps> = ({
   isOpen,
   onClose,
   platform,
-  onSuccess
+  onSuccess,
+  mt5PreferredDemo = null,
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -30,6 +33,13 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
   const [mt5Password, setMt5Password] = useState('');
   const [mt5Server, setMt5Server] = useState('');
   const [mt5TerminalPath, setMt5TerminalPath] = useState('');
+  const [mt5IsDemo, setMt5IsDemo] = useState(true);
+
+  useEffect(() => {
+    if (isOpen && platform === 'mt5' && mt5PreferredDemo !== null && mt5PreferredDemo !== undefined) {
+      setMt5IsDemo(mt5PreferredDemo);
+    }
+  }, [isOpen, platform, mt5PreferredDemo]);
 
   if (!isOpen) return null;
 
@@ -94,16 +104,19 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
     setIsLoading(true);
     setErrorDetail(null);
     try {
-      const result = await api.connectMT5({
-        login: parseInt(mt5Login),
-        password: mt5Password,
-        server: mt5Server,
-        terminal_path: mt5TerminalPath
-      });
+      const result = await api.connectMT5(
+        {
+          login: parseInt(mt5Login),
+          password: mt5Password,
+          server: mt5Server,
+          terminal_path: mt5TerminalPath,
+        },
+        { is_demo: mt5IsDemo }
+      );
       
       if (result.status === 'success' || result.status === 'connected' || result.connected) {
         toast.success('Conectado a MetaTrader 5');
-        onSuccess(result);
+        onSuccess(result.accountInfo || result);
         onClose();
       } else {
         const msg = result.message || 'Error de conexión';
@@ -229,6 +242,41 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
                   <strong>Error:</strong> {errorDetail}
                 </div>
               )}
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Tipo de cuenta MT5</label>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMt5IsDemo(true)}
+                    className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                      mt5IsDemo
+                        ? 'bg-green-600 text-white'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    }`}
+                  >
+                    Demo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMt5IsDemo(false)}
+                    className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                      !mt5IsDemo
+                        ? 'bg-red-600 text-white'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    }`}
+                  >
+                    Real
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2">
+                  Debes usar el <strong>servidor</strong> que corresponda (p. ej. broker &quot;-Demo&quot; vs cuenta live en tu broker).
+                </p>
+                {!mt5IsDemo && (
+                  <p className="text-xs text-orange-400 mt-1">
+                    ⚠️ Cuenta real: confirmas operar con dinero real en este login/servidor.
+                  </p>
+                )}
+              </div>
               <div>
                 <label className="block text-sm text-slate-400 mb-2">Login (Número de cuenta)</label>
                 <input

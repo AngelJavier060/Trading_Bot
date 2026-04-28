@@ -110,14 +110,6 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
   };
 
   const handleConnectMT5 = async () => {
-    if (mt5Unavailable) {
-      toast.error(
-        mt5Unavailable.message.length > 220
-          ? `${mt5Unavailable.message.slice(0, 220)}…`
-          : mt5Unavailable.message
-      );
-      return;
-    }
     if (!mt5Login || !mt5Password || !mt5Server) {
       toast.error('Por favor completa todos los campos');
       return;
@@ -252,13 +244,14 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
               </div>
             </div>
           ) : (
-            <div className={`space-y-4${mt5Unavailable ? ' pointer-events-none opacity-60' : ''}`}>
+            <div className="space-y-4">
               {mt5Unavailable && (
-                <div className="rounded-lg border border-red-600/70 bg-red-950/40 p-3 text-xs text-red-100 space-y-1 pointer-events-auto">
-                  <p className="font-semibold text-red-200">MT5 no disponible en este servidor (respuesta de la API)</p>
-                  <p className="text-red-100/90 leading-snug break-words">{mt5Unavailable.message}</p>
+                <div className="rounded-lg border border-amber-600/60 bg-amber-950/30 p-3 text-xs text-amber-100 space-y-1">
+                  <p className="font-semibold text-amber-200">Mismo programa que IQ Option — aviso sobre este servidor</p>
+                  <p className="text-amber-100/90 leading-snug break-words">{mt5Unavailable.message}</p>
                   <p className="text-[11px] text-slate-400 pt-1">
-                    Código: <span className="font-mono">{mt5Unavailable.code || '—'}</span> — No es un fallo de credenciales: el hosting es incompatible con la API oficial de MetaTrader 5.
+                    Código: <span className="font-mono">{mt5Unavailable.code || '—'}</span>. Puedes pulsar <strong>Conectar MT5</strong> igualmente;
+                    si el backend está en Linux/nube, la API devolverá error hasta usar Windows + terminal MT5 en esa máquina.
                   </p>
                 </div>
               )}
@@ -420,7 +413,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
             </button>
             <button
               onClick={platform === 'iqoption' ? handleConnectIQ : handleConnectMT5}
-              disabled={isLoading || (platform === 'mt5' && !!mt5Unavailable)}
+              disabled={isLoading}
               className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isLoading ? (

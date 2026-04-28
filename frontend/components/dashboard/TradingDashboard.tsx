@@ -1157,11 +1157,12 @@ const ConfigurationTab: React.FC<{
           </div>
 
           {mt5Blocked && (
-            <div className="rounded-xl border border-red-200 bg-red-50/90 p-4 text-sm text-red-900 space-y-2">
-              <p className="font-bold">MetaTrader 5 no está disponible en este servidor de API</p>
+            <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-4 text-sm text-amber-950 space-y-2">
+              <p className="font-bold">Limitación del servidor para MT5 (no afecta IQ Option)</p>
               <p className="text-xs leading-relaxed opacity-95">{mt5Blocked.message}</p>
-              <p className="text-[11px] text-red-800/80">
-                Usa IQ Option desde este panel o despliega el backend en un <strong>VPS Windows</strong> con el terminal MT5 abierto.
+              <p className="text-[11px] text-amber-900/85">
+                <strong>IQ y MT5 siguen en el mismo programa:</strong> puedes pulsar <strong>Conectar</strong> abajo para abrir el formulario MT5.
+                En Linux/nube el intento fallará hasta desplegar la API en <strong>Windows</strong> con MT5 abierto.
               </p>
             </div>
           )}
@@ -1181,8 +1182,7 @@ const ConfigurationTab: React.FC<{
                 <button
                   type="button"
                   onClick={onConnectMT5}
-                  disabled={!!mt5Blocked}
-                  className="px-6 py-2 bg-[#3f5c8c] hover:bg-[#2d4a78] rounded-full text-sm font-semibold transition-colors text-white shrink-0 disabled:opacity-45 disabled:pointer-events-none"
+                  className="px-6 py-2 bg-[#3f5c8c] hover:bg-[#2d4a78] rounded-full text-sm font-semibold transition-colors text-white shrink-0"
                 >
                   Conectar
                 </button>
@@ -2194,37 +2194,30 @@ const LiveTradingTab: React.FC<{
             </div>
             {/* Connection notice when the chosen broker isn't available */}
             {platform === 'mt5' && !mt5Connected && (
-              mt5Blocked ? (
-                <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-slate-100 border border-slate-300 text-slate-800 text-xs">
-                  <span className="material-symbols-outlined text-base mt-0.5">info</span>
-                  <div className="flex-1">
-                    <p className="font-bold">MT5 no disponible en la API de producción</p>
-                    <p className="opacity-90 leading-snug mt-1">{mt5Blocked.message}</p>
-                    <p className="mt-2 text-[11px] text-slate-600">
-                      Puedes operar con <strong>IQ Option</strong> desde este mismo panel o mover el backend a un VPS Windows con MT5.
-                    </p>
-                  </div>
-                </div>
-              ) : (
               <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
                 <span className="material-symbols-outlined text-base mt-0.5">warning</span>
                 <div className="flex-1">
                   <p className="font-bold">MetaTrader 5 no está conectado</p>
                   <p className="opacity-90">
-                    Conéctate desde <span className="font-semibold">Configuración → Conexiones</span> para ver
-                    velas reales de los activos seleccionados (Forex, Commodities, Índices y Crypto).
+                    Usa el mismo flujo que IQ Option: pulsa <span className="font-semibold">Conectar MT5</span> o ve a{' '}
+                    <span className="font-semibold">Configuración → Conexiones</span>.
                   </p>
+                  {mt5Blocked && (
+                    <p className="mt-2 text-[11px] leading-snug text-amber-900/85 border-t border-amber-200/60 pt-2">
+                      <strong>Servidor actual:</strong> {mt5Blocked.message}{' '}
+                      Aun así puedes abrir el formulario; en la nube suele responder 503 hasta que la API corra en Windows con MT5 abierto.
+                    </p>
+                  )}
                 </div>
                 {(onConnectMT5 || onOpenConnectionModal) && (
                   <button
                     onClick={() => (onConnectMT5 || onOpenConnectionModal)?.()}
-                    className="px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold whitespace-nowrap"
+                    className="px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold whitespace-nowrap shrink-0"
                   >
                     Conectar MT5
                   </button>
                 )}
               </div>
-              )
             )}
             {platform === 'iqoption' && !iqConnected && (
               <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
@@ -3485,7 +3478,7 @@ const PlatformsHubTab: React.FC<{
       connected: mt5Connected,
       balance: mt5Balance,
       onConnect: onConnectMT5,
-      available: !mt5Blocked,
+      available: true,
     },
     {
       key: 'iq',
@@ -3569,21 +3562,19 @@ const PlatformsHubTab: React.FC<{
                 GESTIONAR
               </button>
             ) : p.available ? (
-              <button
-                onClick={p.key === 'mt5' || p.key === 'iq' ? p.onConnect : onOpenConnectionModal}
-                className="w-full py-3 bg-[#3f5c8c] text-white rounded-full text-xs font-semibold tracking-wide hover:bg-[#2d4a78] transition-colors"
-              >
-                CONECTAR
-              </button>
-            ) : p.key === 'mt5' && mt5Blocked ? (
-              <button
-                type="button"
-                disabled
-                title={mt5Blocked.message}
-                className="w-full py-3 border border-slate-300 bg-slate-100 text-slate-500 rounded-full text-xs font-semibold tracking-wide cursor-not-allowed"
-              >
-                NO DISPONIBLE (SERVIDOR)
-              </button>
+              <>
+                <button
+                  onClick={p.key === 'mt5' || p.key === 'iq' ? p.onConnect : onOpenConnectionModal}
+                  className="w-full py-3 bg-[#3f5c8c] text-white rounded-full text-xs font-semibold tracking-wide hover:bg-[#2d4a78] transition-colors"
+                >
+                  CONECTAR
+                </button>
+                {p.key === 'mt5' && mt5Blocked && (
+                  <p className="text-[10px] text-center text-amber-800/90 mt-2 leading-tight px-1">
+                    Aviso: este servidor no puede completar MT5 (Linux/nube). Puedes intentar igual; en Windows local sí funciona.
+                  </p>
+                )}
+              </>
             ) : (
               <button className="w-full py-3 border border-[#747780] text-[#191c1e] rounded-full text-xs font-semibold tracking-wide hover:bg-[#f2f4f6] transition-colors">
                 GESTIONAR
@@ -3986,12 +3977,6 @@ const TradingDashboard: React.FC = () => {
   };
 
   const handleConnectMT5 = () => {
-    if (mt5Blocked) {
-      toast.error(
-        mt5Blocked.message.length > 280 ? `${mt5Blocked.message.slice(0, 280)}…` : mt5Blocked.message
-      );
-      return;
-    }
     setMt5PreferredDemo(null);
     setConnectionPlatform('mt5');
     setConnectionModalOpen(true);

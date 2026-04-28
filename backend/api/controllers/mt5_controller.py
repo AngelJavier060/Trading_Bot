@@ -278,6 +278,26 @@ class MT5Controller:
     def get_status(self):
         """Return MT5 connection status with live balance refresh."""
         try:
+            blocked = _mt5_blocked_reason_not_windows()
+            if blocked:
+                return jsonify({
+                    'status': 'unavailable',
+                    'connected': False,
+                    'code': 'mt5_requires_windows_terminal',
+                    'message': blocked,
+                })
+
+            if not MT5_AVAILABLE or mt5 is None:
+                return jsonify({
+                    'status': 'unavailable',
+                    'connected': False,
+                    'code': 'mt5_module_missing',
+                    'message': (
+                        'El módulo MetaTrader5 no está instalado en este servidor. '
+                        'En la nube (Linux/Docker) la API oficial de MT5 no aplica sin Windows + terminal.'
+                    ),
+                })
+
             session = trading_service.get_mt5()
             if not session:
                 return jsonify({'status': 'disconnected', 'connected': False})

@@ -658,11 +658,13 @@ const ConfigurationTab: React.FC<{
   onSaveConfig: () => void;
   configPlatform: 'iqoption' | 'mt5';
   onConfigPlatformChange: (p: 'iqoption' | 'mt5') => void;
+  mt5Blocked: { code: string; message: string } | null;
 }> = ({ 
   iqConnected, mt5Connected, iqBalance, mt5Balance, iqAccountType, mt5AccountType,
   onConnectIQ, onConnectMT5, onDisconnectIQ, onDisconnectMT5, onSwitchIQAccount, onPrepareMT5Reconnect,
   config, onConfigChange, onSaveConfig,
-  configPlatform, onConfigPlatformChange
+  configPlatform, onConfigPlatformChange,
+  mt5Blocked,
 }) => {
   const [expandedIQStrategy, setExpandedIQStrategy] = useState<string | null>(null);
   const [expandedMT5Strategy, setExpandedMT5Strategy] = useState<string | null>(null);
@@ -1154,6 +1156,16 @@ const ConfigurationTab: React.FC<{
             <p className="text-sm text-[#43474f] mt-1 max-w-2xl">Ajusta los parámetros operativos y selección de activos para tu terminal MT5. Los cambios se aplicarán en tiempo real.</p>
           </div>
 
+          {mt5Blocked && (
+            <div className="rounded-xl border border-red-200 bg-red-50/90 p-4 text-sm text-red-900 space-y-2">
+              <p className="font-bold">MetaTrader 5 no está disponible en este servidor de API</p>
+              <p className="text-xs leading-relaxed opacity-95">{mt5Blocked.message}</p>
+              <p className="text-[11px] text-red-800/80">
+                Usa IQ Option desde este panel o despliega el backend en un <strong>VPS Windows</strong> con el terminal MT5 abierto.
+              </p>
+            </div>
+          )}
+
           {/* Connection card */}
           <div className="bg-white p-5 rounded-xl border border-[#c4c6d0]/30 shadow-[0_4px_20px_rgba(112,141,192,0.08)] flex flex-col gap-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1166,8 +1178,12 @@ const ConfigurationTab: React.FC<{
                 </div>
               </div>
               {!mt5Connected ? (
-                <button type="button" onClick={onConnectMT5}
-                  className="px-6 py-2 bg-[#3f5c8c] hover:bg-[#2d4a78] rounded-full text-sm font-semibold transition-colors text-white shrink-0">
+                <button
+                  type="button"
+                  onClick={onConnectMT5}
+                  disabled={!!mt5Blocked}
+                  className="px-6 py-2 bg-[#3f5c8c] hover:bg-[#2d4a78] rounded-full text-sm font-semibold transition-colors text-white shrink-0 disabled:opacity-45 disabled:pointer-events-none"
+                >
                   Conectar
                 </button>
               ) : (
@@ -1693,13 +1709,15 @@ const LiveTradingTab: React.FC<{
   mt5Connected: boolean;
   activeSessions: string[];
   onOpenConnectionModal?: () => void;
+  onConnectMT5?: () => void;
+  mt5Blocked: { code: string; message: string } | null;
 }> = ({
   platform, setPlatform, tradingMode, setTradingMode,
   isTrading, onToggleTrading, liveStatus, signals, recentTrades,
   onExecuteSignal, onIgnoreSignal, onRefreshSignals, isScanning,
   selectedSymbol, onSymbolChange, marketType, onMarketTypeChange, selectedAssets,
   configStrategies, configIndicators, iqConnected, mt5Connected, activeSessions,
-  onOpenConnectionModal
+  onOpenConnectionModal, onConnectMT5, mt5Blocked
 }) => {
   // Get available symbols based on platform and market type
   const getAvailableSymbols = () => {
@@ -1934,8 +1952,14 @@ const LiveTradingTab: React.FC<{
         toast('Modo DEMO sin broker: operaciones simuladas localmente', { icon: '📋' });
       }
       if (platform === 'mt5' && !mt5Connected) {
-        toast.error('Debes conectar MT5 para usar el modo automático');
-        onOpenConnectionModal?.();
+        if (mt5Blocked) {
+          toast.error(
+            mt5Blocked.message.length > 220 ? `${mt5Blocked.message.slice(0, 220)}…` : mt5Blocked.message
+          );
+        } else {
+          toast.error('Debes conectar MT5 para usar el modo automático');
+          (onConnectMT5 || onOpenConnectionModal)?.();
+        }
         return;
       }
     }
@@ -1950,8 +1974,14 @@ const LiveTradingTab: React.FC<{
           toast('Iniciando en modo DEMO simulado (sin broker conectado)', { icon: '📋' });
         }
         if (platform === 'mt5' && !mt5Connected) {
-          toast.error('Debes conectar MT5 para usar el modo automático');
-          onOpenConnectionModal?.();
+          if (mt5Blocked) {
+            toast.error(
+              mt5Blocked.message.length > 220 ? `${mt5Blocked.message.slice(0, 220)}…` : mt5Blocked.message
+            );
+          } else {
+            toast.error('Debes conectar MT5 para usar el modo automático');
+            (onConnectMT5 || onOpenConnectionModal)?.();
+          }
           return;
         }
       }
@@ -2164,6 +2194,18 @@ const LiveTradingTab: React.FC<{
             </div>
             {/* Connection notice when the chosen broker isn't available */}
             {platform === 'mt5' && !mt5Connected && (
+              mt5Blocked ? (
+                <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-slate-100 border border-slate-300 text-slate-800 text-xs">
+                  <span className="material-symbols-outlined text-base mt-0.5">info</span>
+                  <div className="flex-1">
+                    <p className="font-bold">MT5 no disponible en la API de producción</p>
+                    <p className="opacity-90 leading-snug mt-1">{mt5Blocked.message}</p>
+                    <p className="mt-2 text-[11px] text-slate-600">
+                      Puedes operar con <strong>IQ Option</strong> desde este mismo panel o mover el backend a un VPS Windows con MT5.
+                    </p>
+                  </div>
+                </div>
+              ) : (
               <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
                 <span className="material-symbols-outlined text-base mt-0.5">warning</span>
                 <div className="flex-1">
@@ -2173,15 +2215,16 @@ const LiveTradingTab: React.FC<{
                     velas reales de los activos seleccionados (Forex, Commodities, Índices y Crypto).
                   </p>
                 </div>
-                {onOpenConnectionModal && (
+                {(onConnectMT5 || onOpenConnectionModal) && (
                   <button
-                    onClick={onOpenConnectionModal}
+                    onClick={() => (onConnectMT5 || onOpenConnectionModal)?.()}
                     className="px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold whitespace-nowrap"
                   >
                     Conectar MT5
                   </button>
                 )}
               </div>
+              )
             )}
             {platform === 'iqoption' && !iqConnected && (
               <div className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
@@ -3430,7 +3473,8 @@ const PlatformsHubTab: React.FC<{
   onConnectIQ: () => void;
   onConnectMT5: () => void;
   onOpenConnectionModal: () => void;
-}> = ({ iqConnected, mt5Connected, iqBalance, mt5Balance, onConnectIQ, onConnectMT5, onOpenConnectionModal }) => {
+  mt5Blocked: { code: string; message: string } | null;
+}> = ({ iqConnected, mt5Connected, iqBalance, mt5Balance, onConnectIQ, onConnectMT5, onOpenConnectionModal, mt5Blocked }) => {
   const platforms = [
     {
       key: 'mt5',
@@ -3441,7 +3485,7 @@ const PlatformsHubTab: React.FC<{
       connected: mt5Connected,
       balance: mt5Balance,
       onConnect: onConnectMT5,
-      available: true,
+      available: !mt5Blocked,
     },
     {
       key: 'iq',
@@ -3530,6 +3574,15 @@ const PlatformsHubTab: React.FC<{
                 className="w-full py-3 bg-[#3f5c8c] text-white rounded-full text-xs font-semibold tracking-wide hover:bg-[#2d4a78] transition-colors"
               >
                 CONECTAR
+              </button>
+            ) : p.key === 'mt5' && mt5Blocked ? (
+              <button
+                type="button"
+                disabled
+                title={mt5Blocked.message}
+                className="w-full py-3 border border-slate-300 bg-slate-100 text-slate-500 rounded-full text-xs font-semibold tracking-wide cursor-not-allowed"
+              >
+                NO DISPONIBLE (SERVIDOR)
               </button>
             ) : (
               <button className="w-full py-3 border border-[#747780] text-[#191c1e] rounded-full text-xs font-semibold tracking-wide hover:bg-[#f2f4f6] transition-colors">
@@ -3687,6 +3740,8 @@ const TradingDashboard: React.FC = () => {
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [connectionPlatform, setConnectionPlatform] = useState<'iqoption' | 'mt5'>('iqoption');
   const [mt5PreferredDemo, setMt5PreferredDemo] = useState<boolean | null>(null);
+  /** Backend en Linux / sin módulo MT5: conexión imposible; evita 503 repetidos. */
+  const [mt5Blocked, setMt5Blocked] = useState<{ code: string; message: string } | null>(null);
 
   const closeConnectionModal = () => {
     setConnectionModalOpen(false);
@@ -3698,6 +3753,12 @@ const TradingDashboard: React.FC = () => {
     checkConnections();
     fetchLiveStatus();
   }, []);
+
+  useEffect(() => {
+    if (connectionModalOpen) {
+      void checkConnections();
+    }
+  }, [connectionModalOpen]);
 
   // Sequential poll: status first (triggers backend settlement), then history (reads results)
   const pollLiveData = async () => {
@@ -3770,20 +3831,31 @@ const TradingDashboard: React.FC = () => {
 
     try {
       const mt5s = await api.getMT5Status();
-      if (mt5s.connected === true || mt5s.status === 'connected') {
-        const ai = mt5s.accountInfo;
-        if (ai) {
-          setMt5Connected(true);
-          setMt5Balance(Number(ai.balance ?? ai.equity ?? 0));
-          setMt5AccountType(
-            String(ai.account_type || 'DEMO').toUpperCase() === 'REAL' ? 'REAL' : 'DEMO'
-          );
-        }
-      } else {
+      if (mt5s.status === 'unavailable' && typeof mt5s.message === 'string') {
+        setMt5Blocked({
+          code: String((mt5s as { code?: string }).code || 'mt5_unavailable'),
+          message: mt5s.message,
+        });
         setMt5Connected(false);
         setMt5Balance(0);
+      } else {
+        setMt5Blocked(null);
+        if (mt5s.connected === true || mt5s.status === 'connected') {
+          const ai = (mt5s as { accountInfo?: Record<string, unknown> }).accountInfo;
+          if (ai) {
+            setMt5Connected(true);
+            setMt5Balance(Number(ai.balance ?? ai.equity ?? 0));
+            setMt5AccountType(
+              String(ai.account_type || 'DEMO').toUpperCase() === 'REAL' ? 'REAL' : 'DEMO'
+            );
+          }
+        } else {
+          setMt5Connected(false);
+          setMt5Balance(0);
+        }
       }
     } catch {
+      setMt5Blocked(null);
       /* MT5 status no disponible — no forzar desconexión */
     }
   };
@@ -3914,6 +3986,12 @@ const TradingDashboard: React.FC = () => {
   };
 
   const handleConnectMT5 = () => {
+    if (mt5Blocked) {
+      toast.error(
+        mt5Blocked.message.length > 280 ? `${mt5Blocked.message.slice(0, 280)}…` : mt5Blocked.message
+      );
+      return;
+    }
     setMt5PreferredDemo(null);
     setConnectionPlatform('mt5');
     setConnectionModalOpen(true);
@@ -4434,6 +4512,7 @@ const TradingDashboard: React.FC = () => {
               onConnectIQ={handleConnectIQ}
               onConnectMT5={handleConnectMT5}
               onOpenConnectionModal={() => setConnectionModalOpen(true)}
+              mt5Blocked={mt5Blocked}
             />
           )}
 
@@ -4456,6 +4535,7 @@ const TradingDashboard: React.FC = () => {
               onSaveConfig={handleSaveConfig}
               configPlatform={configPlatform}
               onConfigPlatformChange={setConfigPlatform}
+              mt5Blocked={mt5Blocked}
             />
           )}
 
@@ -4495,7 +4575,12 @@ const TradingDashboard: React.FC = () => {
               iqConnected={iqConnected}
               mt5Connected={mt5Connected}
               activeSessions={config.activeSessions || []}
-              onOpenConnectionModal={() => setConnectionModalOpen(true)}
+              onOpenConnectionModal={() => {
+                setConnectionPlatform('iqoption');
+                setConnectionModalOpen(true);
+              }}
+              onConnectMT5={handleConnectMT5}
+              mt5Blocked={mt5Blocked}
             />
           )}
 
@@ -4542,6 +4627,7 @@ const TradingDashboard: React.FC = () => {
         platform={connectionPlatform}
         onSuccess={handleConnectionSuccess}
         mt5PreferredDemo={mt5PreferredDemo}
+        mt5Unavailable={connectionPlatform === 'mt5' ? mt5Blocked : null}
       />
 
       {/* ── Modal de advertencia de backtesting ── */}

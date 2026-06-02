@@ -21,9 +21,8 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Flutter mobile app (lives in its own repo, do NOT commit from here)
-apptrading/
-
+# apptrading/ — app Flutter móvil: SÍ en Git (respaldo entre PCs).
+# No entra en docker-compose ni en los Dockerfiles de producción (solo backend + frontend).
 
 # Virtual environments
 venv/

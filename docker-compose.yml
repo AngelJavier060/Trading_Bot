@@ -4,6 +4,8 @@ version: "3.9"
 # Producción: quita `volumes:` de trading-backend o usa solo la imagen construida;
 #   un volumen vacío sobre /app borraría el código de la imagen.
 #
+# apptrading/ (Flutter) no forma parte de este stack; vive en el repo solo como respaldo.
+#
 # El front solo “hornea” NEXT_PUBLIC_API_URL en `docker build` (ARG en Dockerfile).
 #   Cambiar la URL en runtime en `environment:` NO actualiza el JS del cliente; hay que reconstruir.
 

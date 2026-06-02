@@ -183,7 +183,7 @@ const Backtesting = () => {
       {/* Header */}
       <div className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/app/dashboard')}
+          <button onClick={() => router.push(router.pathname.startsWith('/iqoption') ? '/iqoption/dashboard?tab=config' : '/platform-select')}
             className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400">
             <ArrowLeft className="w-5 h-5" />
           </button>

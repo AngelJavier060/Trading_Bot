@@ -1,23 +1,23 @@
 {
   "ema_rsi": {
-    "wins": 178,
-    "losses": 58,
-    "total": 236,
-    "total_confidence": 16816.011928724358,
-    "last_updated": "2026-04-27T18:54:36.586683"
+    "wins": 179,
+    "losses": 66,
+    "total": 245,
+    "total_confidence": 17531.011928724358,
+    "last_updated": "2026-05-10T21:03:05.526069"
   },
   "macd": {
     "wins": 3,
     "losses": 3,
     "total": 6,
     "total_confidence": 433.0,
-    "last_updated": "2026-04-27T18:54:36.587717"
+    "last_updated": "2026-05-10T21:03:05.519091"
   },
   "bollinger": {
     "wins": 0,
     "losses": 1,
     "total": 1,
     "total_confidence": 56.2,
-    "last_updated": "2026-04-27T18:54:36.586901"
+    "last_updated": "2026-05-10T21:03:05.515099"
   }
 }

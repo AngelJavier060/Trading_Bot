@@ -64,6 +64,10 @@ def trading_status():
 def platform_history():
     return controller.get_platform_history()
 
+@trading_bp.route('/open-positions', methods=['GET'])
+def open_positions():
+    return controller.get_open_positions()
+
 @trading_bp.route('/order/<order_id>', methods=['GET'])
 def order_status(order_id):
     return controller.get_order_status(order_id)
@@ -80,8 +84,10 @@ def get_account():
 def economic_calendar():
     return controller.get_economic_calendar()
 
-@trading_bp.route('/config', methods=['POST'])
-def save_trading_config():
+@trading_bp.route('/config', methods=['GET', 'POST'])
+def trading_config():
+    if request.method == 'GET':
+        return controller.get_config()
     return controller.save_config()
 
 # Ruta de prueba para el blueprint

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import { TradingPlatform, SUPPORTED_PLATFORMS } from '@/types/platforms';
 import Image from 'next/image';
 
@@ -13,7 +14,20 @@ const AccountConfig: React.FC<AccountConfigProps> = ({
     onAccountTypeChange,
     initialAccountType = 'PRACTICE' 
 }) => {
+    const router = useRouter();
+    const platformChoices = useMemo(() => {
+        if (router.pathname.startsWith('/iqoption')) {
+            return SUPPORTED_PLATFORMS.filter((p) => p.id === 'iqoption');
+        }
+        return SUPPORTED_PLATFORMS;
+    }, [router.pathname]);
     const [selectedPlatform, setSelectedPlatform] = useState<TradingPlatform | null>(null);
+
+    useEffect(() => {
+        if (platformChoices.length === 1 && !selectedPlatform) {
+            setSelectedPlatform(platformChoices[0]);
+        }
+    }, [platformChoices, selectedPlatform]);
     const [credentials, setCredentials] = useState<Record<string, string>>({});
     const [accountType, setAccountType] = useState<'PRACTICE' | 'REAL'>(initialAccountType as 'PRACTICE' | 'REAL');
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -91,8 +105,8 @@ const AccountConfig: React.FC<AccountConfigProps> = ({
                 </span>
             </div>
             
-            <div className="grid grid-cols-3 gap-4 mb-6">
-                {SUPPORTED_PLATFORMS.map(platform => (
+            <div className={`grid gap-4 mb-6 ${platformChoices.length === 1 ? 'grid-cols-1 max-w-xs' : 'grid-cols-3'}`}>
+                {platformChoices.map(platform => (
                     <button
                         key={platform.id}
                         onClick={() => handlePlatformSelect(platform)}

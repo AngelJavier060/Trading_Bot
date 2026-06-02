@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import { setTradingSessionActive, getSavedPlatformPath, isTradingSessionActive } from '../lib/sessionAuth';
 
 const Login = () => {
   const [terminalId, setTerminalId] = useState('');
@@ -19,10 +20,23 @@ const Login = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (isTradingSessionActive()) {
+      const next = getSavedPlatformPath();
+      router.replace(next || '/platform-select');
+    }
+  }, [router]);
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (terminalId === 'admin' && password === '1234') {
-      router.push('/dashboard');
+      setTradingSessionActive();
+      const saved = getSavedPlatformPath();
+      if (saved) {
+        router.push(saved);
+      } else {
+        router.push('/platform-select');
+      }
     } else {
       alert('Identificador o clave de seguridad incorrectos');
     }

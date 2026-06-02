@@ -4,7 +4,7 @@ RSI Divergence Strategy
 Professional RSI divergence detection with price action confirmation.
 """
 
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 import pandas as pd
 import numpy as np
 from .base_strategy import BaseStrategy, TradingSignal, SignalType, SignalReason
@@ -176,7 +176,13 @@ class RsiDivergenceStrategy(BaseStrategy):
         
         return None
     
-    def analyze(self, candles: List[Dict]) -> TradingSignal:
+    def analyze(
+        self,
+        candles: List[Dict],
+        candles_htf: Optional[List[Dict]] = None,
+        *,
+        asset: str = "",
+    ) -> TradingSignal:
         df = self.candles_to_df(candles)
         
         if len(df) < self.min_candles:

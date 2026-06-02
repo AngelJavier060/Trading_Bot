@@ -1,0 +1,43 @@
+{
+  "mode": "manual",
+  "platform": "iqoption",
+  "account_type": "DEMO",
+  "symbols": [
+    "EURUSD-OTC",
+    "GBPUSD-OTC"
+  ],
+  "strategies": [
+    "ema_trend_continuation"
+  ],
+  "strategy_id": "ema_trend_continuation",
+  "strategy_param_overrides": {},
+  "timeframe": "5m",
+  "analysis_interval": 30,
+  "max_concurrent_trades": 3,
+  "trade_amount": 10,
+  "expiration_time": 5,
+  "iq_market_type": "otc",
+  "marketType": "OTC",
+  "risk": "medium",
+  "timeframes": [
+    "5m"
+  ],
+  "serverMotor": {
+    "min_confidence": 68,
+    "max_concurrent": 3,
+    "max_daily_trades": 50,
+    "use_ml": true,
+    "ml_weight": 0.2,
+    "ml_min_probability": 0.55,
+    "max_consecutive_losses": 3,
+    "loss_streak_pause_minutes": 30,
+    "reset_streak_on_win": true,
+    "daily_profit_target_type": "percent",
+    "daily_profit_target": 15,
+    "daily_loss_limit_type": "percent",
+    "daily_loss_limit": 10,
+    "volatility_filter_enabled": true,
+    "atr_min_threshold": 0.03,
+    "news_filter_enabled": true
+  }
+}

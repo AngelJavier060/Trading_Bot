@@ -8,7 +8,7 @@ export type MT5UnavailableInfo = { code?: string; message: string };
 interface ConnectionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  platform: 'iqoption' | 'mt5';
+  platform: 'iqoption' | 'mt5' | 'mt4';
   onSuccess: (accountInfo: any) => void;
   /** Al abrir MT5 desde Config, forzar modo demo/real esperado en el formulario */
   mt5PreferredDemo?: boolean | null;
@@ -56,6 +56,8 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
   }, [isOpen, platform, mt5PreferredDemo]);
 
   if (!isOpen) return null;
+
+  const metaTerminalLabel = platform === 'mt4' ? 'MT4' : 'MT5'
 
   const handleConnectIQ = async () => {
     if (!iqEmail || !iqPassword) {
@@ -152,7 +154,12 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <h2 className="text-lg font-semibold text-white">
-            Conectar a {platform === 'iqoption' ? 'IQ Option' : 'MetaTrader 5'}
+            Conectar a{' '}
+            {platform === 'iqoption'
+              ? 'IQ Option'
+              : platform === 'mt4'
+                ? 'MetaTrader 4'
+                : 'MetaTrader 5'}
           </h2>
           <button
             onClick={onClose}
@@ -245,6 +252,16 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
             </div>
           ) : (
             <div className="space-y-4">
+              {platform === 'mt4' && (
+                <div className="rounded-lg border border-cyan-700/50 bg-cyan-950/30 p-3 text-[11px] text-cyan-100/95 space-y-1">
+                  <p className="font-semibold text-cyan-200">MetaTrader 4 en este proyecto</p>
+                  <p>
+                    El backend usa el <strong>conector oficial de MetaTrader 5</strong> (terminal MT5 en Windows).
+                    Si tu broker ofrece MT4 y MT5 con el mismo login/servidor, prueba esas credenciales aquí; si no,
+                    hace falta integración MT4 aparte.
+                  </p>
+                </div>
+              )}
               {mt5Unavailable && (
                 <div className="rounded-lg border border-amber-600/60 bg-amber-950/30 p-3 text-xs text-amber-100 space-y-1">
                   <p className="font-semibold text-amber-200">Mismo programa que IQ Option — aviso sobre este servidor</p>
@@ -285,7 +302,7 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
                 </div>
               )}
               <div>
-                <label className="block text-sm text-slate-400 mb-2">Tipo de cuenta MT5</label>
+                <label className="block text-sm text-slate-400 mb-2">Tipo de cuenta {metaTerminalLabel}</label>
                 <div className="flex gap-3">
                   <button
                     type="button"
@@ -421,8 +438,12 @@ const ConnectionModal: React.FC<ConnectionModalProps> = ({
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Conectando...
                 </>
+              ) : platform === 'iqoption' ? (
+                'Conectar IQ Option'
+              ) : platform === 'mt4' ? (
+                'Conectar MT4 (API MT5)'
               ) : (
-                platform === 'mt5' ? 'Conectar MT5' : 'Conectar IQ Option'
+                'Conectar MT5'
               )}
             </button>
           </div>

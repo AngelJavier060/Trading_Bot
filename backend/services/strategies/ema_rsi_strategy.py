@@ -4,7 +4,7 @@ EMA + RSI Strategy
 Professional implementation of EMA crossover with RSI confirmation.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 from .base_strategy import BaseStrategy, TradingSignal, SignalType, SignalReason
 
 
@@ -37,7 +37,13 @@ class EmaRsiStrategy(BaseStrategy):
             'min_ema_separation': 0.0005,  # 0.05% minimum separation
         }
     
-    def analyze(self, candles: List[Dict]) -> TradingSignal:
+    def analyze(
+        self,
+        candles: List[Dict],
+        candles_htf: Optional[List[Dict]] = None,
+        *,
+        asset: str = "",
+    ) -> TradingSignal:
         df = self.candles_to_df(candles)
         
         if len(df) < self.min_candles:
@@ -174,21 +180,21 @@ class EmaRsiStrategy(BaseStrategy):
             ))
             put_score += 1
         
-        # Determine signal
-        max_score = 6  # Maximum possible score
+                # Determine signal (threshold reducido para mas senales)
+        max_score = 6
         
-        if call_score > put_score and call_score >= 2:
+        if call_score > put_score and call_score >= 1.5:
             signal = SignalType.CALL
-            confidence = min(95, (call_score / max_score) * 100)
-        elif put_score > call_score and put_score >= 2:
+            confidence = min(95, (call_score / max_score) * 100 + 10)
+        elif put_score > call_score and put_score >= 1.5:
             signal = SignalType.PUT
-            confidence = min(95, (put_score / max_score) * 100)
+            confidence = min(95, (put_score / max_score) * 100 + 10)
         else:
             signal = SignalType.NONE
             confidence = 0
         
-        # Filter weak signals
-        if confidence < 40:
+        # Filter weak signals (umbral reducido de 40 a 20)
+        if confidence < 20:
             signal = SignalType.NONE
             confidence = 0
         

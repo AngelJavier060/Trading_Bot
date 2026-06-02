@@ -1,12 +1,12 @@
 {
   "status": "success",
-  "symbol": "EURUSD",
-  "started_at": "2026-04-27T13:47:31.500465",
-  "candles": 600,
-  "finished_at": "2026-04-27T13:47:31.755427",
+  "symbol": "USDJPY",
+  "started_at": "2026-05-10T19:23:21.425894",
+  "candles": 550,
+  "finished_at": "2026-05-10T19:23:29.805140",
   "models": {
     "xgboost": "success",
     "lstm": "error"
   },
-  "n_features": 100
+  "n_features": 102
 }

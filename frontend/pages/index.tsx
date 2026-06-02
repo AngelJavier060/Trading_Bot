@@ -1,8 +1,15 @@
 import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
+import {
+  isTradingSessionActive,
+  getSavedPlatformPath,
+} from '../lib/sessionAuth';
 
 const LandingPage = () => {
+  const router = useRouter();
+
   useEffect(() => {
     const isDark = document.documentElement.classList.contains('dark');
     document.documentElement.classList.remove('dark');
@@ -12,6 +19,17 @@ const LandingPage = () => {
       if (isDark) document.documentElement.classList.add('dark');
     };
   }, []);
+
+  // Sesión activa: ir directo al trabajo (dashboard guardado o selector)
+  useEffect(() => {
+    if (!isTradingSessionActive()) return;
+    const platformPath = getSavedPlatformPath();
+    if (platformPath) {
+      router.replace(platformPath);
+    } else {
+      router.replace('/platform-select');
+    }
+  }, [router]);
 
   return (
     <>
@@ -33,7 +51,13 @@ const LandingPage = () => {
               <a className="text-slate-500 hover:text-slate-900 transition-colors" href="#">Cumplimiento</a>
             </div>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 sm:gap-6">
+            <Link
+              href="/platform-select"
+              className="hidden sm:inline text-sm font-medium text-[#3f5c8c] hover:text-[#2d4568] transition-colors"
+            >
+              Elegir plataforma
+            </Link>
             <div className="flex items-center gap-4 text-slate-500">
               <button type="button" className="p-2 hover:bg-slate-50 rounded-full transition-all">
                 <span className="material-symbols-outlined">notifications</span>
@@ -66,11 +90,16 @@ const LandingPage = () => {
               <p className="text-lg text-slate-600 max-w-xl leading-relaxed">
                 Diseñado para la ejecución de alta frecuencia y la gestión de liquidez profunda. Navegue por los mercados globales con la autoridad y calma de la tecnología de Nexus Institucional.
               </p>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-4">
                 <Link href="/login">
                   <button type="button" className="bg-[#3f5c8c] px-8 py-4 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm hover:opacity-90 transition-all" style={{ color: 'white' }}>
                     Solicitar Acceso a la Terminal
                     <span className="material-symbols-outlined">arrow_forward</span>
+                  </button>
+                </Link>
+                <Link href="/platform-select">
+                  <button type="button" className="border border-[#3f5c8c] text-[#3f5c8c] px-8 py-4 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
+                    IQ Option / MT5 / MT4
                   </button>
                 </Link>
                 <button type="button" className="border border-[#c4c6d0] text-slate-700 px-8 py-4 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
@@ -265,6 +294,11 @@ const LandingPage = () => {
                 <Link href="/login">
                   <button type="button" className="bg-[#708DC0] px-10 py-5 rounded-lg font-bold hover:scale-105 transition-transform" style={{ color: 'white' }}>
                     Programar una Demo
+                  </button>
+                </Link>
+                <Link href="/platform-select">
+                  <button type="button" className="backdrop-blur-md border border-white/40 px-10 py-5 rounded-lg font-bold hover:bg-white/20 transition-all" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: 'white' }}>
+                    Entrar por plataforma
                   </button>
                 </Link>
                 <button type="button" className="backdrop-blur-md border border-white/20 px-10 py-5 rounded-lg font-bold hover:bg-white/20 transition-all" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: 'white' }}>

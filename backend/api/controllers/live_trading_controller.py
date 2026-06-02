@@ -9,6 +9,7 @@ from flask import request, jsonify
 from datetime import datetime, timezone
 from io import StringIO
 import csv
+from typing import Optional
 
 from services.trading.live_trading_service import live_trading_service
 from services.strategies import get_strategy, AVAILABLE_STRATEGIES
@@ -56,6 +57,11 @@ class LiveTradingController:
                     'message': 'min_confidence debe estar entre 60 y 95'
                 }), 400
 
+            raw_iq_mt = (data.get('iq_market_type') or data.get('iqMarketType') or 'otc')
+            iq_mt = str(raw_iq_mt).lower().strip()
+            if iq_mt not in ('otc', 'binary'):
+                iq_mt = 'otc'
+
             # Build config from request parameters.
             # Defaults aligned with "Mejoras al motor de estrategias":
             #   min_confidence=68 (Etapa inicial), ml_weight=0.20 (Etapa 1)
@@ -63,6 +69,7 @@ class LiveTradingController:
                 'mode': data.get('mode', 'manual'),
                 'symbols': data.get('symbols', ['EURUSD', 'GBPUSD', 'USDJPY']),
                 'strategies': data.get('strategies', []),  # empty → auto-select best
+                'iq_market_type': iq_mt,
                 'amount': data.get('amount', 10),
                 'min_confidence': requested_min_conf,
                 'expiration': data.get('expiration', 5),
@@ -84,6 +91,9 @@ class LiveTradingController:
                 'volatility_filter_enabled': data.get('volatility_filter_enabled', True),
                 'atr_min_threshold': data.get('atr_min_threshold', 0.03),
                 'news_filter_enabled': data.get('news_filter_enabled', True),
+                'strategy_param_overrides': data.get('strategy_param_overrides')
+                or data.get('strategyParamOverrides')
+                or {},
             }
             
             result = self.trading_service.start_bot(platform, account_type, config)
@@ -110,21 +120,23 @@ class LiveTradingController:
             strategies = data.get('strategies', ['ema_rsi'])
             timeframe = data.get('timeframe', '5m')
             
-            # Map display names to backend identifiers
+                        # Map display names to backend identifiers
             strategy_map = {
                 'EMA + RSI': 'ema_rsi',
                 'MACD': 'macd',
                 'Bollinger Bands': 'bollinger',
                 'Ichimoku Cloud': 'ichimoku',
                 'RSI Divergence': 'rsi_divergence',
-                'Swing Trading': 'ema_rsi'
+                'Swing Trading': 'ema_rsi',
+                'EMA Trend Continuation': 'ema_trend_continuation',
+                'Price Action Reversal at Key Levels': 'price_action_key_levels',
             }
             
             # Convert strategies to backend identifiers
             mapped_strategies = []
             for s in strategies:
                 mapped = strategy_map.get(s, s.lower().replace(' ', '_').replace('+', '').strip())
-                if mapped in ['ema_rsi', 'macd', 'bollinger', 'ichimoku', 'rsi_divergence']:
+                if mapped in ['ema_rsi', 'macd', 'bollinger', 'ichimoku', 'rsi_divergence', 'ema_trend_continuation', 'price_action_key_levels']:
                     mapped_strategies.append(mapped)
             
             if not mapped_strategies:
@@ -133,9 +145,11 @@ class LiveTradingController:
             # Scan all symbols and collect signals
             all_signals = []
             
+            overrides = data.get('strategy_param_overrides') or data.get('strategyParamOverrides') or {}
+
             for symbol in symbols:
                 for strategy_name in mapped_strategies:
-                    signal_result = self._analyze_single_symbol(symbol, strategy_name, timeframe)
+                    signal_result = self._analyze_single_symbol(symbol, strategy_name, timeframe, overrides)
                     if signal_result and signal_result.get('signal', {}).get('signal') in ['call', 'put']:
                         sig = signal_result.get('signal', {})
                         conf = sig.get('confidence', 0)
@@ -178,7 +192,7 @@ class LiveTradingController:
             traceback.print_exc()
             return jsonify({'status': 'error', 'message': str(e)}), 500
     
-    def _analyze_single_symbol(self, symbol: str, strategy_name: str, timeframe: str):
+    def _analyze_single_symbol(self, symbol: str, strategy_name: str, timeframe: str, overrides: Optional[dict] = None):
         """Analyze a single symbol with a specific strategy."""
         import random
         
@@ -265,9 +279,21 @@ class LiveTradingController:
                 }
             
             # Get strategy signal from real data
-            strategy = get_strategy(strategy_name)
+            ov = overrides or {}
+            p_over = ov.get(strategy_name) if isinstance(ov.get(strategy_name), dict) else None
+            strategy = get_strategy(strategy_name, p_over)
             candles = df.to_dict('records')
-            signal = strategy.analyze(candles)
+            candles_15m = None
+            if strategy_name == "price_action_key_levels":
+                try:
+                    if unified_data_service.is_connected():
+                        df15 = unified_data_service.get_candles(symbol, "15m", 220)
+                        if df15 is not None and not df15.empty:
+                            df15 = df15.loc[:, ~df15.columns.duplicated()]
+                            candles_15m = df15.to_dict("records")
+                except Exception:
+                    candles_15m = None
+            signal = strategy.analyze(candles, candles_15m, asset=symbol)
             
             return {
                 'symbol': symbol,

@@ -13,6 +13,7 @@ from api.routes.live_trading_routes import live_trading_bp
 from api.routes.strategy_routes import strategy_bp, config_bp as robot_config_bp
 from api.routes.assistant_routes import assistant_bp
 from api.routes.tv_datafeed_routes import tv_bp
+from api.routes.auto_connect_routes import auto_connect_bp, platforms_bp
 from config.settings import SECRET_KEY
 
 def create_app():
@@ -136,8 +137,55 @@ def create_app():
     app.register_blueprint(robot_config_bp, url_prefix='/api/robot')
     app.register_blueprint(data_bp, url_prefix='/api/data')
     app.register_blueprint(assistant_bp, url_prefix='/api/assistant')
-    # TradingView Advanced Charts UDF datafeed
+        # TradingView Advanced Charts UDF datafeed
     app.register_blueprint(tv_bp, url_prefix='/api/tv')
+    
+    # Auto-Connect y Multi-Platform (NUEVO)
+    app.register_blueprint(auto_connect_bp, url_prefix='/api/auto-connect')
+    app.register_blueprint(platforms_bp, url_prefix='/api/platforms')
+    
+    # ── Auto-conexión al arrancar ──────────────────────────────────
+    # Se ejecuta en un hilo de fondo para no bloquear el inicio
+    def _trigger_auto_connect():
+        import threading
+        import logging as _log
+        
+        def _do_connect():
+            try:
+                from services.trading.auto_connector import auto_connector
+                
+                # Cargar configuración de auto-inicio
+                import json as _json
+                from pathlib import Path
+                config_path = Path("data/auto_start_config.json")
+                if config_path.exists():
+                    try:
+                        cfg = _json.loads(config_path.read_text(encoding="utf-8"))
+                        auto_connector.auto_start_bot = cfg.get("auto_start_bot", False)
+                        auto_connector.bot_config = cfg.get("bot_config", {})
+                    except Exception:
+                        pass
+                
+                if auto_connector.get_credentials_path().exists():
+                    _log.info("🚀 Auto-Connect: Credenciales encontradas. Conectando...")
+                    auto_connector.connect_all(
+                        auto_start_bot=auto_connector.auto_start_bot,
+                        bot_config=auto_connector.bot_config,
+                    )
+                else:
+                    _log.info("ℹ️ Auto-Connect: No hay credenciales guardadas. "
+                              "Usa /api/auto-connect/save-credentials para configurar.")
+            except Exception as e:
+                _log.error(f"Error en auto-conexión de inicio: {e}")
+        
+        thread = threading.Thread(target=_do_connect, daemon=True, name="startup-auto-connect")
+        thread.start()
+    
+    # Ejecutar auto-conexión 2 segundos después de iniciar el servidor
+    import threading as _th
+    _timer = _th.Timer(2.0, _trigger_auto_connect)
+    _timer.daemon = True
+    _timer.start()
     
     # Manejador de errores global
     @app.errorhandler(Exception)

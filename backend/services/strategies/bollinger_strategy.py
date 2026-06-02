@@ -4,7 +4,7 @@ Bollinger Bands Strategy
 Professional Bollinger Bands implementation with squeeze detection and mean reversion.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 from .base_strategy import BaseStrategy, TradingSignal, SignalType, SignalReason
 
 
@@ -42,7 +42,13 @@ class BollingerBandsStrategy(BaseStrategy):
             return 0.5
         return (close - lower) / (upper - lower)
     
-    def analyze(self, candles: List[Dict]) -> TradingSignal:
+    def analyze(
+        self,
+        candles: List[Dict],
+        candles_htf: Optional[List[Dict]] = None,
+        *,
+        asset: str = "",
+    ) -> TradingSignal:
         df = self.candles_to_df(candles)
         
         if len(df) < self.min_candles:
@@ -249,20 +255,20 @@ class BollingerBandsStrategy(BaseStrategy):
             ))
             put_score += 0.5
         
-        # Determine signal
+                # Determine signal (threshold reducido)
         max_score = 8
         
-        if call_score > put_score and call_score >= 2.5:
+        if call_score > put_score and call_score >= 2.0:
             signal = SignalType.CALL
-            confidence = min(95, (call_score / max_score) * 100)
-        elif put_score > call_score and put_score >= 2.5:
+            confidence = min(95, (call_score / max_score) * 100 + 8)
+        elif put_score > call_score and put_score >= 2.0:
             signal = SignalType.PUT
-            confidence = min(95, (put_score / max_score) * 100)
+            confidence = min(95, (put_score / max_score) * 100 + 8)
         else:
             signal = SignalType.NONE
             confidence = 0
         
-        if confidence < 40:
+        if confidence < 20:
             signal = SignalType.NONE
             confidence = 0
         

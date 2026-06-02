@@ -95,7 +95,8 @@ class BotStatus:
     active_trades: List[Dict] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     started_at: Optional[datetime] = None
-    
+    iq_market_type: str = ""  # 'otc' | 'binary' (IQ Option)
+
     def to_dict(self) -> Dict:
         # Helper to ensure JSON-serializable values
         def safe_json(obj):
@@ -137,7 +138,8 @@ class BotStatus:
             'active_trades': safe_json(self.active_trades),
             'errors': [str(e) for e in self.errors[-5:]],
             'started_at': self.started_at.isoformat() if self.started_at else None,
-            'uptime_seconds': float((datetime.now() - self.started_at).total_seconds()) if self.started_at else 0
+            'uptime_seconds': float((datetime.now() - self.started_at).total_seconds()) if self.started_at else 0,
+            'iq_market_type': str(self.iq_market_type) if self.iq_market_type else "",
         }
 
 
@@ -195,6 +197,7 @@ class LiveTradingService:
         #  - min_confidence: 60 -> 68 (filtro mínimo aceptable en OTC 5m)
         #  - ml_weight:     0.30 -> 0.20 (Etapa 1: ML observando)
         self.config: Dict = {}
+        self.strategy_param_overrides: Dict[str, Dict] = {}
         self.symbols: List[str] = []
         self.strategies: List[str] = ['ema_rsi']
         self.trading_mode: str = 'manual'  # 'auto' or 'manual'
@@ -206,7 +209,8 @@ class LiveTradingService:
         self.ml_enabled: bool = True
         self.ml_weight: float = 0.20
         self.ml_min_probability: float = 0.55
-        
+        self.iq_market_type: str = 'otc'
+
         # Paths
         self.data_dir = os.path.join('data', 'trades')
         self.history_file = os.path.join(self.data_dir, 'trade_history.json')
@@ -236,7 +240,15 @@ class LiveTradingService:
         
         # Update configuration
         self.config = config
+        raw_ov = config.get("strategy_param_overrides") or config.get("strategyParamOverrides") or {}
+        self.strategy_param_overrides = raw_ov if isinstance(raw_ov, dict) else {}
         self.symbols = config.get('symbols', ['EURUSD', 'GBPUSD', 'USDJPY'])
+        raw_iq_mt = (config.get('iq_market_type') or config.get('iqMarketType') or 'otc')
+        iq_mt = str(raw_iq_mt).lower().strip()
+        if iq_mt not in ('otc', 'binary'):
+            iq_mt = 'otc'
+        self.iq_market_type = iq_mt
+        self.status.iq_market_type = iq_mt
         # Use provided strategies OR auto-select best performers
         configured = config.get('strategies', [])
         if configured:
@@ -337,7 +349,15 @@ class LiveTradingService:
         self._scan_thread = Thread(target=self._trading_loop, daemon=True)
         self._scan_thread.start()
         
-        logger.info(f"Bot started: {platform} ({account_type}) - Scanning {len(self.symbols)} symbols")
+        try:
+            strategy_performance.record_param_snapshots(self.strategy_param_overrides)
+        except Exception as ex:
+            logger.debug(f"record_param_snapshots: {ex}")
+
+        logger.info(
+            f"Bot started: {platform} ({account_type}) iq_market_type={self.iq_market_type} "
+            f"- Scanning {len(self.symbols)} symbols"
+        )
         
         return {
             'status': 'success',
@@ -1543,11 +1563,25 @@ class LiveTradingService:
 
                 # Multi-strategy confluence: run ALL configured strategies
                 from services.strategies import get_strategy, AVAILABLE_STRATEGIES
+                # Ensure no duplicate columns to avoid 'DataFrame columns are not unique' warning
+                df = df.loc[:, ~df.columns.duplicated()]
                 candles_list = df.to_dict('records')
                 # Filtrar por allowed_market_type (Ichimoku queda fuera en OTC)
                 strategy_names = self._strategies_for_symbol(symbol)
                 if not strategy_names:
                     strategy_names = ['ema_rsi']
+
+                ov = getattr(self, "strategy_param_overrides", {}) or {}
+                candles_15m: Optional[List[Dict]] = None
+                if any(n == "price_action_key_levels" for n in strategy_names):
+                    try:
+                        if unified_data_service.is_connected():
+                            df15 = unified_data_service.get_candles(symbol, "15m", 220)
+                            if df15 is not None and not df15.empty:
+                                df15 = df15.loc[:, ~df15.columns.duplicated()]
+                                candles_15m = df15.to_dict("records")
+                    except Exception as e15:
+                        logger.debug(f"No 15m candles for {symbol}: {e15}")
 
                 call_votes = 0
                 put_votes = 0
@@ -1559,8 +1593,9 @@ class LiveTradingService:
 
                 for strat_name in strategy_names:
                     try:
-                        strat = get_strategy(strat_name)
-                        sig = strat.analyze(candles_list)
+                        p_over = ov.get(strat_name) if isinstance(ov.get(strat_name), dict) else None
+                        strat = get_strategy(strat_name, p_over)
+                        sig = strat.analyze(candles_list, candles_15m, asset=symbol)
                         if sig.signal.value == 'call':
                             call_votes += 1
                             total_confidence_call += sig.confidence
@@ -2194,7 +2229,7 @@ class LiveTradingService:
                 elif isinstance(r, str):
                     reasons_list.append(r)
             
-            # Use the unified execution method
+                        # Use the unified execution method
             self.execute_and_monitor_trade(
                 symbol=symbol,
                 direction=direction,
@@ -2203,18 +2238,15 @@ class LiveTradingService:
                 confidence=confidence,
                 indicators=signal_data.get('indicators', {}),
                 reasons=reasons_list,
-                ml_prediction=signal_data.get('ml_prediction'),
-                platform=self.status.platform or 'iqoption',
-                account_type=self.status.account_type or 'PRACTICE',
-                expiration=int(self.config.get('expiration', 5))
+                                platform=self.status.platform,
+                account_type=self.status.account_type,
             )
-                
         except Exception as e:
-            logger.error(f"Error in auto trade execution: {e}")
-            import traceback
-            traceback.print_exc()
-            self.status.errors.append(str(e)[:100])
+            logger.error(f"Auto trade execution error: {e}")
+            self.status.errors.append(str(e))
 
 
 # Singleton instance
 live_trading_service = LiveTradingService()
+
+       

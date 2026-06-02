@@ -4,7 +4,7 @@ MACD Strategy
 Professional MACD implementation with histogram analysis and divergence detection.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 from .base_strategy import BaseStrategy, TradingSignal, SignalType, SignalReason
 
 
@@ -35,7 +35,13 @@ class MacdStrategy(BaseStrategy):
             'histogram_threshold': 0.0001,
         }
     
-    def analyze(self, candles: List[Dict]) -> TradingSignal:
+    def analyze(
+        self,
+        candles: List[Dict],
+        candles_htf: Optional[List[Dict]] = None,
+        *,
+        asset: str = "",
+    ) -> TradingSignal:
         df = self.candles_to_df(candles)
         
         if len(df) < self.min_candles:
@@ -247,20 +253,20 @@ class MacdStrategy(BaseStrategy):
             ))
             put_score += 1
         
-        # Determine signal
+                # Determine signal (threshold reducido)
         max_score = 7
         
-        if call_score > put_score and call_score >= 2.5:
+        if call_score > put_score and call_score >= 2.0:
             signal = SignalType.CALL
-            confidence = min(95, (call_score / max_score) * 100)
-        elif put_score > call_score and put_score >= 2.5:
+            confidence = min(95, (call_score / max_score) * 100 + 10)
+        elif put_score > call_score and put_score >= 2.0:
             signal = SignalType.PUT
-            confidence = min(95, (put_score / max_score) * 100)
+            confidence = min(95, (put_score / max_score) * 100 + 10)
         else:
             signal = SignalType.NONE
             confidence = 0
         
-        if confidence < 40:
+        if confidence < 20:
             signal = SignalType.NONE
             confidence = 0
         

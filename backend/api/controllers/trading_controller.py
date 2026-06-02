@@ -1,4 +1,4 @@
-from flask import jsonify, request
+﻿from flask import jsonify, request
 from iqoptionapi.stable_api import IQ_Option
 from typing import Optional
 import logging
@@ -36,13 +36,255 @@ def _unpack_check_win_v4(raw):
     return None, None
 
 
+try:
+    from iqoptionapi.constants import ACTIVES as _IQ_ACTIVES_CODES
+
+    IQ_ACTIVE_ID_TO_NAME = {int(v): k for k, v in _IQ_ACTIVES_CODES.items()}
+except Exception:
+    IQ_ACTIVE_ID_TO_NAME = {}
+
+
+def _unwrap_iq_get_positions_result(raw):
+    """IQ_Option.get_positions devuelve (ok, msg) â€” el controlador antiguo trataba la tupla como truthy y mezclaba tipos."""
+    if isinstance(raw, tuple):
+        if len(raw) >= 2:
+            return bool(raw[0]), raw[1]
+        if len(raw) == 1:
+            return bool(raw[0]), raw[0]
+    if raw in (None, False):
+        return False, None
+    return True, raw
+
+
+def _iq_positions_msg_to_list(msg):
+    if msg is None:
+        return []
+    if isinstance(msg, list):
+        return msg
+    if isinstance(msg, dict):
+        for key in (
+            "positions",
+            "items",
+            "result",
+            "opened",
+            "active_positions",
+            "binary_options",
+            "turbo_options",
+            "digital_options",
+            "data",
+        ):
+            inner = msg.get(key)
+            if isinstance(inner, list):
+                return inner
+            if inner and isinstance(inner, dict):
+                inner2 = inner.get("positions") or inner.get("items")
+                if isinstance(inner2, list):
+                    return inner2
+        if "id" in msg or "active" in msg or "external_id" in msg:
+            return [msg]
+    return []
+
+
+def _flatten_iq_position_row(pos: dict) -> dict:
+    """Algunas respuestas anidan datos en raw_event u order."""
+    if not isinstance(pos, dict):
+        return pos
+    out = dict(pos)
+    raw = pos.get("raw_event")
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if k not in out or out.get(k) in (None, "", 0):
+                out[k] = v
+    nested = pos.get("order")
+    if isinstance(nested, dict):
+        for k, v in nested.items():
+            if k not in out or out.get(k) in (None, "", 0):
+                out[k] = v
+    return out
+
+
+def _position_row_id(pos: dict):
+    for k in (
+        "external_id",
+        "id",
+        "order_id",
+        "option_id",
+        "position_id",
+        "buy_order_id",
+    ):
+        v = pos.get(k)
+        if v is not None and v != "":
+            return v
+    return None
+
+
+def _epochish_to_seconds(val):
+    if val is None:
+        return None
+    try:
+        x = float(val)
+    except (TypeError, ValueError):
+        return None
+    # Timestamps en ms (p. ej. 1.7e12) â†’ segundos UNIX
+    if x > 1e11:
+        return x / 1000.0
+    return x
+
+
+def _resolve_iq_active_symbol(pos: dict) -> str:
+    a = pos.get("active") or pos.get("underlying") or pos.get("asset") or pos.get("symbol")
+    if a is None:
+        aid = pos.get("active_id") or pos.get("instrument_id")
+        if aid is not None:
+            try:
+                i = int(aid)
+                return IQ_ACTIVE_ID_TO_NAME.get(i, f"#{i}")
+            except (TypeError, ValueError):
+                return str(aid)
+        return ""
+    if isinstance(a, str) and not a.isdigit():
+        return a
+    try:
+        i = int(a)
+        return IQ_ACTIVE_ID_TO_NAME.get(i, str(a))
+    except (TypeError, ValueError):
+        return str(a)
+
+
+def _normalize_iq_open_position(pos: dict, instrument_type: str) -> dict:
+    pos = _flatten_iq_position_row(pos)
+    sym = _resolve_iq_active_symbol(pos)
+    raw_dir = (pos.get("dir") or pos.get("direction") or "").lower()
+    if raw_dir in ("call", "up", "buy"):
+        direction = "call"
+    else:
+        direction = "put"
+    try:
+        amount = float(pos.get("amount") or pos.get("invest") or pos.get("sum") or pos.get("deposit") or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    oid = _position_row_id(pos)
+    created = _epochish_to_seconds(
+        pos.get("created")
+        or pos.get("created_at")
+        or pos.get("open_time")
+        or pos.get("timestamp")
+        or pos.get("purchase_time")
+        or pos.get("openTime")
+    )
+    exp = _epochish_to_seconds(
+        pos.get("expiration")
+        or pos.get("exp_time")
+        or pos.get("expire_time")
+        or pos.get("expiration_time")
+        or pos.get("close_reason_time")
+        or pos.get("finish_time")
+        or pos.get("close_time")
+        or pos.get("purchase_end_time")
+        or pos.get("expirationTime")
+    )
+    try:
+        open_quote = float(
+            pos.get("open_quote")
+            or pos.get("openQuote")
+            or pos.get("open_price")
+            or pos.get("open_underlying_price")
+            or pos.get("strike")
+            or pos.get("value")
+            or 0
+        )
+    except (TypeError, ValueError):
+        open_quote = 0.0
+    try:
+        current_quote = float(
+            pos.get("current_quote")
+            or pos.get("curr_quote")
+            or pos.get("quote")
+            or pos.get("current_price")
+            or pos.get("curr_price")
+            or pos.get("underlying_price")
+            or 0
+        )
+    except (TypeError, ValueError):
+        current_quote = 0.0
+    exp_profit_keys = (
+        "expected_profit",
+        "close_effect_amount",
+        "close_profit",
+        "profit_amount",
+        "pnl",
+        "profit",
+        "profit_income",
+        "expected_payoff",
+    )
+    expected_profit = None
+    for k in exp_profit_keys:
+        v = pos.get(k)
+        if v is not None:
+            try:
+                expected_profit = float(v)
+                break
+            except (TypeError, ValueError):
+                continue
+    if expected_profit is None:
+        expected_profit = 0.0
+    is_otc = isinstance(sym, str) and ("-OTC" in sym.upper() or " OTC" in sym.upper())
+    # Determinar categoría de mercado para el frontend
+    norm_types = ['digital-option', 'fx-option', 'forex', 'cfd', 'crypto', 'multi-option']
+    if is_otc:
+        market_type = 'otc'
+    elif instrument_type in norm_types:
+        market_type = 'mercado_normal'
+    else:
+        market_type = 'binarias'
+    kind = "digital" if "digital" in instrument_type else "binary"
+    return {
+        "order_id": oid,
+        "symbol": sym,
+        "direction": direction,
+        "amount": amount,
+        "instrument_type": instrument_type,
+        "instrument_kind": kind,
+        "is_otc": is_otc,
+        "open_quote": open_quote,
+        "current_quote": current_quote,
+        "created_at_sec": created,
+        "expiration_sec": exp,
+        "expected_profit": expected_profit,
+    }
+
+
+LIVE_UI_SYNC_FILE = os.path.join("data", "live_trading_ui_sync.json")
+
+
 class TradingController:
     def __init__(self):
-        # El estado ahora se gestionará preferentemente a través de trading_service
+        # El estado ahora se gestionarÃ¡ preferentemente a travÃ©s de trading_service
         self.current_account_type = "PRACTICE"
         self.last_check = None
         self.current_config = None
         self.email = None
+        self._load_ui_sync_from_disk()
+
+    def _load_ui_sync_from_disk(self) -> None:
+        try:
+            if os.path.isfile(LIVE_UI_SYNC_FILE):
+                with open(LIVE_UI_SYNC_FILE, "r", encoding="utf-8") as f:
+                    self.current_config = json.load(f)
+        except Exception as e:
+            logging.debug(f"No se pudo cargar {LIVE_UI_SYNC_FILE}: {e}")
+
+    def get_config(self):
+        """Devuelve la Ãºltima configuraciÃ³n de panel guardada en disco (o memoria)."""
+        try:
+            if self.current_config is None:
+                self._load_ui_sync_from_disk()
+            if not self.current_config:
+                return jsonify({"status": "success", "config": None}), 200
+            return jsonify({"status": "success", "config": self.current_config}), 200
+        except Exception as e:
+            logging.error(f"get_config: {e}")
+            return jsonify({"status": "error", "message": str(e)}), 500
 
     @property
     def iq(self) -> Optional[IQ_Option]:
@@ -64,7 +306,7 @@ class TradingController:
             demo_only = request.get_json(silent=True, force=True) or {}
             demo_only = bool(demo_only.get('demo_only', False))
 
-            # ── MODO DEMO SIN BROKER ──────────────────────────────────────
+            # â”€â”€ MODO DEMO SIN BROKER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if demo_only:
                 self.current_account_type = 'PRACTICE'
                 self.email = credentials.email or 'demo@local'
@@ -80,10 +322,10 @@ class TradingController:
                     }
                 })
 
-            # ── CONEXIÓN REAL A IQ OPTION ─────────────────────────────────
+            # â”€â”€ CONEXIÃ“N REAL A IQ OPTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             email = credentials.email
             if not email or not credentials.password:
-                return jsonify({'status': 'error', 'message': 'Email y contraseña son obligatorios'}), 400
+                return jsonify({'status': 'error', 'message': 'Email y contraseÃ±a son obligatorios'}), 400
 
             logging.info(f"Conectando a IQ Option: {email}")
             iq_instance = IQ_Option(email, credentials.password)
@@ -99,18 +341,18 @@ class TradingController:
                             status = bool(result)
                             reason = None
                     except concurrent.futures.TimeoutError:
-                        logging.error("IQ Option connect() timeout después de 30s")
+                        logging.error("IQ Option connect() timeout despuÃ©s de 30s")
                         return jsonify({
                             'status': 'error',
-                            'message': 'La conexión con IQ Option tardó demasiado (>30s). '
-                                       'Verifica tu conexión a internet o intenta nuevamente.'
+                            'message': 'La conexiÃ³n con IQ Option tardÃ³ demasiado (>30s). '
+                                       'Verifica tu conexiÃ³n a internet o intenta nuevamente.'
                         }), 408
             except Exception as conn_err:
-                logging.error(f"Excepción en iq_instance.connect(): {conn_err}")
+                logging.error(f"ExcepciÃ³n en iq_instance.connect(): {conn_err}")
                 status = False
                 reason = str(conn_err)
 
-            logging.info(f"IQ Option connect → status={status}, reason={reason}")
+            logging.info(f"IQ Option connect â†’ status={status}, reason={reason}")
 
             if status:
                 try:
@@ -140,7 +382,7 @@ class TradingController:
 
                 return jsonify({
                     'status': 'connected',
-                    'message': 'Conexión exitosa con IQ Option',
+                    'message': 'ConexiÃ³n exitosa con IQ Option',
                     'accountInfo': {
                         'account_type': account_type,
                         'balance': balance,
@@ -152,19 +394,19 @@ class TradingController:
                 # Proporcionar mensajes de error claros
                 reason_str = str(reason) if reason else ''
                 if not reason_str or reason_str.lower() in ('none', 'false', ''):
-                    msg = ('Credenciales incorrectas. Verifica tu email y contraseña de IQ Option.'
-                           ' Si usas 2FA, desactívalo temporalmente desde la app de IQ Option.')
+                    msg = ('Credenciales incorrectas. Verifica tu email y contraseÃ±a de IQ Option.'
+                           ' Si usas 2FA, desactÃ­valo temporalmente desde la app de IQ Option.')
                 elif 'wrong' in reason_str.lower() or 'invalid' in reason_str.lower():
-                    msg = f'Email o contraseña incorrectos ({reason_str})'
+                    msg = f'Email o contraseÃ±a incorrectos ({reason_str})'
                 elif '2fa' in reason_str.lower() or 'two' in reason_str.lower():
-                    msg = 'Tu cuenta tiene autenticación de dos factores (2FA). Desactívala desde IQ Option antes de conectar.'
+                    msg = 'Tu cuenta tiene autenticaciÃ³n de dos factores (2FA). DesactÃ­vala desde IQ Option antes de conectar.'
                 else:
-                    msg = f'IQ Option rechazó la conexión: {reason_str}'
+                    msg = f'IQ Option rechazÃ³ la conexiÃ³n: {reason_str}'
                 logging.warning(f"IQ Option login failed: {msg}")
                 return jsonify({'status': 'error', 'message': msg}), 401
 
         except Exception as e:
-            logging.error(f"Error en la conexión: {str(e)}")
+            logging.error(f"Error en la conexiÃ³n: {str(e)}")
             return jsonify({'status': 'error', 'message': f'Error inesperado: {str(e)}'}), 500
 
     def check_connection(self):
@@ -172,7 +414,7 @@ class TradingController:
             if not self.connected:
                 return jsonify({
                     'status': 'disconnected',
-                    'message': 'No hay conexión activa'
+                    'message': 'No hay conexiÃ³n activa'
                 })
 
             try:
@@ -187,7 +429,7 @@ class TradingController:
 
             return jsonify({
                 'status': 'connected',
-                'message': 'Conexión activa',
+                'message': 'ConexiÃ³n activa',
                 'accountInfo': {
                     'account_type': self.current_account_type,
                     'balance': balance,
@@ -196,10 +438,10 @@ class TradingController:
             })
 
         except Exception as e:
-            logging.error(f"Error al verificar conexión: {str(e)}")
+            logging.error(f"Error al verificar conexiÃ³n: {str(e)}")
             return jsonify({
                 'status': 'disconnected',
-                'message': 'Sin conexión'
+                'message': 'Sin conexiÃ³n'
             })
 
     def disconnect(self):
@@ -208,7 +450,7 @@ class TradingController:
             self.last_check = None
             return jsonify({
                 'status': 'success',
-                'message': 'Desconexión exitosa'
+                'message': 'DesconexiÃ³n exitosa'
             })
         except Exception as e:
             logging.error(f"Error al desconectar: {str(e)}")
@@ -223,7 +465,7 @@ class TradingController:
             if not self.iq or not self.connected:
                 return jsonify({
                     'status': 'error',
-                    'message': 'No hay conexión activa'
+                    'message': 'No hay conexiÃ³n activa'
                 }), 400
 
             account_type = validated_data.account_type
@@ -258,7 +500,7 @@ class TradingController:
             if not self.iq or not self.connected:
                 return jsonify({
                     'status': 'error',
-                    'message': 'No hay conexión activa'
+                    'message': 'No hay conexiÃ³n activa'
                 }), 400
 
             balance = self.iq.get_balance()
@@ -274,7 +516,7 @@ class TradingController:
                 }
             })
         except Exception as e:
-            logging.error(f"Error al obtener información de cuenta: {str(e)}")
+            logging.error(f"Error al obtener informaciÃ³n de cuenta: {str(e)}")
             return jsonify({
                 'status': 'error',
                 'message': str(e)
@@ -288,16 +530,16 @@ class TradingController:
             direction = validated_data.direction.lower()
             expiration = validated_data.expiration
             
-            # Sin sesión broker: no simular como éxito (evita confusión con operaciones reales)
+            # Sin sesiÃ³n broker: no simular como Ã©xito (evita confusiÃ³n con operaciones reales)
             if not self.iq or not self.connected:
                 logging.warning(
-                    f"Orden rechazada — sin IQ Option conectado: {asset} {direction.upper()} ${amount}"
+                    f"Orden rechazada â€” sin IQ Option conectado: {asset} {direction.upper()} ${amount}"
                 )
                 return jsonify({
                     'status': 'error',
                     'message': (
-                        'No hay conexión activa con IQ Option. Conecta la cuenta en el panel '
-                        'antes de enviar órdenes; no se ejecutará ninguna operación simulada en el broker.'
+                        'No hay conexiÃ³n activa con IQ Option. Conecta la cuenta en el panel '
+                        'antes de enviar Ã³rdenes; no se ejecutarÃ¡ ninguna operaciÃ³n simulada en el broker.'
                     ),
                     'code': 'BROKER_NOT_CONNECTED',
                     'mode': 'simulation_blocked',
@@ -308,7 +550,7 @@ class TradingController:
             direction = validated_data.direction.lower()
             expiration = validated_data.expiration
 
-            # Cargar configuración de usuario para límites de riesgo (si existe)
+            # Cargar configuraciÃ³n de usuario para lÃ­mites de riesgo (si existe)
             user_config = None
             try:
                 config_path = os.path.join('data', 'user_config.json')
@@ -327,14 +569,14 @@ class TradingController:
                     if mdt is not None:
                         max_trades_per_day = int(mdt)
                 except Exception:
-                    logging.error("max_daily_trades no es un entero válido en user_config.json")
+                    logging.error("max_daily_trades no es un entero vÃ¡lido en user_config.json")
                 try:
                     if mda is not None:
                         max_daily_amount = float(mda)
                 except Exception:
-                    logging.error("max_daily_risk_amount no es un número válido en user_config.json")
+                    logging.error("max_daily_risk_amount no es un nÃºmero vÃ¡lido en user_config.json")
 
-            # Límite diario por monto usando config base si no hay override
+            # LÃ­mite diario por monto usando config base si no hay override
             if max_daily_amount is None:
                 try:
                     base_config_path = os.path.join('data', 'config.json')
@@ -346,7 +588,7 @@ class TradingController:
                         if default_risk_amount is not None:
                             max_daily_amount = float(default_risk_amount)
                 except Exception as e:
-                    logging.error(f"No se pudo leer config.json para límites de riesgo: {e}")
+                    logging.error(f"No se pudo leer config.json para lÃ­mites de riesgo: {e}")
 
             allowed, reason = can_place_trade(amount, max_trades_per_day, max_daily_amount)
             if not allowed:
@@ -444,7 +686,7 @@ class TradingController:
             if not self.iq or not self.connected:
                 return jsonify({
                     'status': 'error',
-                    'message': 'No hay conexión activa'
+                    'message': 'No hay conexiÃ³n activa'
                 }), 400
 
             order_id = validated_data.order_id
@@ -473,12 +715,12 @@ class TradingController:
 
     @validate_schema(StrategySchema)
     def run_basic_strategy(self, validated_data: StrategySchema):
-        """Ejecuta una estrategia básica EMA+RSI sobre IQ Option."""
+        """Ejecuta una estrategia bÃ¡sica EMA+RSI sobre IQ Option."""
         try:
             if not self.iq or not self.connected:
                 return jsonify({
                     'status': 'error',
-                    'message': 'No hay conexión activa'
+                    'message': 'No hay conexiÃ³n activa'
                 }), 400
 
             # Valores desde datos validados
@@ -489,7 +731,7 @@ class TradingController:
             expiration = validated_data.expiration
             auto_execute = validated_data.auto_execute
 
-            # Intentar leer configuración de usuario si faltan parámetros clave
+            # Intentar leer configuraciÃ³n de usuario si faltan parÃ¡metros clave
             user_config = None
             try:
                 config_path = os.path.join('data', 'user_config.json')
@@ -499,7 +741,7 @@ class TradingController:
             except Exception as e:
                 logging.error(f"No se pudo leer user_config.json: {e}")
 
-            # Calcular amount a partir del riesgo (%) sobre el balance si no se especificó
+            # Calcular amount a partir del riesgo (%) sobre el balance si no se especificÃ³
             if amount is None and user_config:
                 risk = user_config.get('risk')  # se interpreta como % del balance
                 try:
@@ -540,7 +782,7 @@ class TradingController:
                 }
             }
 
-            # Registrar siempre el análisis de la estrategia
+            # Registrar siempre el anÃ¡lisis de la estrategia
             try:
                 log_trade(
                     event_type='analysis',
@@ -558,14 +800,14 @@ class TradingController:
                     },
                 )
             except Exception as e:
-                logging.error(f"No se pudo registrar log de análisis: {e}")
+                logging.error(f"No se pudo registrar log de anÃ¡lisis: {e}")
 
-            # Ejecución opcional de la orden
+            # EjecuciÃ³n opcional de la orden
             if auto_execute and signal in ['call', 'put']:
                 amount_float = float(amount)
                 expiration_int = int(expiration)
 
-                # Límites de riesgo diarios
+                # LÃ­mites de riesgo diarios
                 max_trades_per_day = None
                 max_daily_amount = None
                 if user_config:
@@ -637,7 +879,7 @@ class TradingController:
 
             return jsonify(response)
         except Exception as e:
-            logging.error(f"Error al ejecutar estrategia básica: {str(e)}")
+            logging.error(f"Error al ejecutar estrategia bÃ¡sica: {str(e)}")
             return jsonify({
                 'status': 'error',
                 'message': str(e)
@@ -650,45 +892,65 @@ class TradingController:
             if not data:
                 return jsonify({
                     'status': 'error',
-                    'message': 'No se recibió configuración'
+                    'message': 'No se recibiÃ³ configuraciÃ³n'
                 }), 400
 
-            # Accept any configuration format - store as-is
-            self.current_config = {
+            raw_mt = (data.get('iq_market_type') or data.get('iqMarketType') or 'otc')
+            iq_mt = str(raw_mt).lower().strip()
+            if iq_mt not in ('otc', 'binary'):
+                iq_mt = 'otc'
+
+            # Base + todas las claves del cliente (p. ej. serverMotor, filtros de /api/live/start)
+            base = {
                 'mode': data.get('mode', 'manual'),
                 'platform': data.get('platform', 'iqoption'),
                 'account_type': data.get('account_type', 'DEMO'),
                 'symbols': data.get('symbols', ['EURUSD']),
                 'strategies': data.get('strategies', ['ema_rsi']),
+                'strategy_id': data.get('strategy_id') or data.get('strategyId'),
+                'strategy_param_overrides': data.get('strategy_param_overrides')
+                or data.get('strategyParamOverrides'),
                 'timeframe': data.get('timeframe', '5m'),
                 'analysis_interval': data.get('analysis_interval', 30),
                 'max_concurrent_trades': data.get('max_concurrent_trades', 3),
                 'trade_amount': data.get('trade_amount', 10),
                 'expiration_time': data.get('expiration_time', 5),
-                # Legacy fields for compatibility
-                'marketType': data.get('marketType', 'forex'),
+                'iq_market_type': iq_mt,
+                'marketType': 'OTC' if iq_mt == 'otc' else 'Binarias',
                 'risk': data.get('risk', 'medium'),
                 'timeframes': data.get('timeframes', ['5m']),
             }
+            merged = {**base}
+            for k, v in (data or {}).items():
+                if k not in merged or v is not None:
+                    merged[k] = v
+            self.current_config = merged
 
-            logging.info(f"Configuración guardada: {self.current_config}")
+            try:
+                os.makedirs(os.path.dirname(LIVE_UI_SYNC_FILE), exist_ok=True)
+                with open(LIVE_UI_SYNC_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(merged, f, indent=2, default=str)
+            except Exception as werr:
+                logging.warning(f"No se pudo escribir {LIVE_UI_SYNC_FILE}: {werr}")
+
+            logging.info(f"ConfiguraciÃ³n guardada: {self.current_config}")
 
             return jsonify({
                 'status': 'success',
-                'message': 'Configuración guardada exitosamente',
+                'message': 'ConfiguraciÃ³n guardada exitosamente',
                 'config': self.current_config
             })
 
         except Exception as e:
-            logging.error(f"Error al guardar configuración: {str(e)}")
+            logging.error(f"Error al guardar configuraciÃ³n: {str(e)}")
             return jsonify({
                 'status': 'error',
-                'message': f'Error al guardar configuración: {str(e)}'
+                'message': f'Error al guardar configuraciÃ³n: {str(e)}'
             }), 500
 
     def get_assets(self):
         try:
-            # Activos por defecto cuando no hay conexión
+            # Activos por defecto cuando no hay conexiÃ³n
             default_assets = {
                 'EURUSD': {'open': True},
                 'GBPUSD': {'open': True},
@@ -750,7 +1012,7 @@ class TradingController:
             max_trades_per_day = None
             max_daily_amount = None
 
-            # Cargar límites desde user_config.json si existen
+            # Cargar lÃ­mites desde user_config.json si existen
             try:
                 config_path = os.path.join('data', 'user_config.json')
                 if os.path.exists(config_path):
@@ -762,16 +1024,16 @@ class TradingController:
                         try:
                             max_trades_per_day = int(mdt)
                         except Exception:
-                            logging.error("max_daily_trades no es un entero válido en user_config.json")
+                            logging.error("max_daily_trades no es un entero vÃ¡lido en user_config.json")
                     if mda is not None:
                         try:
                             max_daily_amount = float(mda)
                         except Exception:
-                            logging.error("max_daily_risk_amount no es un número válido en user_config.json")
+                            logging.error("max_daily_risk_amount no es un nÃºmero vÃ¡lido en user_config.json")
             except Exception as e:
-                logging.error(f"No se pudo leer user_config.json para límites de riesgo: {e}")
+                logging.error(f"No se pudo leer user_config.json para lÃ­mites de riesgo: {e}")
 
-            # Si no hay límite diario configurado, intentar usar config base
+            # Si no hay lÃ­mite diario configurado, intentar usar config base
             if max_daily_amount is None:
                 try:
                     base_config_path = os.path.join('data', 'config.json')
@@ -783,7 +1045,7 @@ class TradingController:
                         if default_risk_amount is not None:
                             max_daily_amount = float(default_risk_amount)
                 except Exception as e:
-                    logging.error(f"No se pudo leer config.json para límites de riesgo: {e}")
+                    logging.error(f"No se pudo leer config.json para lÃ­mites de riesgo: {e}")
 
             limits = {
                 'max_daily_trades': max_trades_per_day,
@@ -808,7 +1070,7 @@ class TradingController:
             if not self.iq or not self.connected:
                 return jsonify({
                     'status': 'error',
-                    'message': 'No hay conexión activa'
+                    'message': 'No hay conexiÃ³n activa'
                 }), 400
 
             assets_str = validated_data.assets
@@ -888,7 +1150,7 @@ class TradingController:
             if not self.iq or not self.connected:
                 return jsonify({
                     'status': 'error',
-                    'message': 'No hay conexión activa'
+                    'message': 'No hay conexiÃ³n activa'
                 }), 400
 
             limit_param = request.args.get('limit', 50)
@@ -942,7 +1204,7 @@ class TradingController:
             if not self.iq or not self.connected:
                 return jsonify({
                     'status': 'error',
-                    'message': 'No hay conexión activa'
+                    'message': 'No hay conexiÃ³n activa'
                 }), 400
 
             try:
@@ -951,7 +1213,7 @@ class TradingController:
                 except (TypeError, ValueError):
                     return jsonify({
                         'status': 'error',
-                        'message': 'order_id inválido'
+                        'message': 'order_id invÃ¡lido'
                     }), 400
 
                 raw = self.iq.check_win_v4(oid)
@@ -1038,13 +1300,124 @@ class TradingController:
                 'message': str(e)
             }), 500
 
+    def _ensure_iq_balance_matches_panel(self) -> None:
+        """get-positions filtra por user_balance_id; alinear con demo/real del panel."""
+        iq = self.iq
+        if not iq:
+            return
+        try:
+            acct = str(self.current_account_type or "PRACTICE").upper()
+            iq.change_balance("REAL" if acct == "REAL" else "PRACTICE")
+            time.sleep(0.12)
+        except Exception:
+            pass
+
+    def _try_iq_portfolio_get_positions(self, iq, instrument_type: str, limit: int = 80) -> list:
+        """Fallback API v3 por si el get-positions clÃ¡sico devuelve vacÃ­o."""
+        try:
+            iq.api.positions = None
+            iq.api.portfolio("sendMessage", "portfolio.get-positions", instrument_type, "", limit, 0)
+            deadline = time.time() + 5.0
+            while iq.api.positions is None and time.time() < deadline:
+                time.sleep(0.02)
+            payload = iq.api.positions
+            if not isinstance(payload, dict):
+                return []
+            st = payload.get("status")
+            try:
+                ok = int(st) == 2000
+            except (TypeError, ValueError):
+                ok = st in (2000, "2000")
+            if not ok:
+                return []
+            return _iq_positions_msg_to_list(payload.get("msg"))
+        except Exception as e:
+            logging.debug("portfolio.get-positions %s: %s", instrument_type, e)
+            return []
+
+    def _collect_iq_option_open_positions(self):
+        """Binarias OTC clÃ¡sicas usan turbo/binary-option; digital-option es otro producto."""
+        iq = self.iq
+        if not iq or not self.connected:
+            return []
+        self._ensure_iq_balance_matches_panel()
+        merged = []
+        seen = set()
+        instrument_types = (
+            "turbo-option",
+            "binary-option",
+            "digital-option",
+            "blitz-option",
+            "fx-option",
+            "crypto",
+            "forex",
+            "cfd",
+            "multi-option",
+        )
+        for it in instrument_types:
+            batch = []
+            try:
+                raw = iq.get_positions(it)
+                ok, msg = _unwrap_iq_get_positions_result(raw)
+                if ok and msg is not None:
+                    batch = _iq_positions_msg_to_list(msg)
+            except Exception as e:
+                logging.debug("get_positions %s: %s", it, e)
+            if not batch:
+                try:
+                    batch = self._try_iq_portfolio_get_positions(iq, it)
+                except Exception as e:
+                    logging.debug("portfolio positions %s: %s", it, e)
+            for pos in batch:
+                if not isinstance(pos, dict):
+                    continue
+                flat = _flatten_iq_position_row(pos)
+                oid = _position_row_id(flat)
+                if oid is None:
+                    continue
+                uid = f"{it}:{oid}"
+                if uid in seen:
+                    continue
+                seen.add(uid)
+                merged.append(_normalize_iq_open_position(flat, it))
+        return merged
+
+    def get_open_positions(self):
+        """Posiciones abiertas en IQ Option (binarias / turbo / digital), normalizadas para el frontend."""
+        try:
+            if not self.iq or not self.connected:
+                return jsonify({
+                    'status': 'error',
+                    'code': 'BROKER_NOT_CONNECTED',
+                    'message': 'No hay conexiÃ³n activa',
+                    'positions': [],
+                    'count': 0,
+                }), 400
+
+            positions = self._collect_iq_option_open_positions()
+            total_expected = sum(float(p.get('expected_profit') or 0) for p in positions)
+            return jsonify({
+                'status': 'success',
+                'positions': positions,
+                'count': len(positions),
+                'total_expected_profit': total_expected,
+                'source': 'iqoption',
+            })
+        except Exception as e:
+            logging.error(f'Error get_open_positions: {e}')
+            return jsonify({
+                'status': 'error',
+                'message': str(e),
+                'positions': [],
+            }), 500
+
     def sync_with_platform(self):
         """Synchronize local state with platform"""
         try:
             if not self.iq or not self.connected:
                 return jsonify({
                     'status': 'error',
-                    'message': 'No hay conexión activa'
+                    'message': 'No hay conexiÃ³n activa'
                 }), 400
 
             sync_data = {
@@ -1059,13 +1432,11 @@ class TradingController:
             except:
                 pass
 
-            # Get open positions
+            # Posiciones abiertas (binarias OTC = turbo-option; antes solo digital-option)
             try:
-                positions = self.iq.get_positions('digital-option')
-                if positions:
-                    sync_data['open_positions'] = positions
-            except:
-                pass
+                sync_data['open_positions'] = self._collect_iq_option_open_positions()
+            except Exception as e:
+                logging.debug(f'open_positions sync: {e}')
 
             return jsonify({
                 'status': 'success',
@@ -1169,3 +1540,4 @@ class TradingController:
                 'message': str(e),
                 'events': []
             }), 500
+

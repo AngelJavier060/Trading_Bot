@@ -14,7 +14,15 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
-ALL_STRATEGIES = ['ema_rsi', 'macd', 'bollinger', 'rsi_divergence', 'ichimoku']
+ALL_STRATEGIES = [
+    'ema_rsi',
+    'macd',
+    'bollinger',
+    'rsi_divergence',
+    'ichimoku',
+    'ema_trend_continuation',
+    'price_action_key_levels',
+]
 MIN_TRADES_FOR_RANKING = 5          # Minimum trades to consider a strategy
 DEFAULT_LOOKBACK_DAYS = 7           # How many days of history to evaluate
 TOP_N_STRATEGIES = 3                # How many strategies the bot will use at once
@@ -45,6 +53,32 @@ class StrategyPerformanceService:
     # ------------------------------------------------------------------ #
     # Public API                                                           #
     # ------------------------------------------------------------------ #
+
+    def record_param_snapshots(self, overrides: Dict[str, Dict]) -> None:
+        """Guarda en disco los últimos parámetros usados por estrategia (desde UI / start_bot)."""
+        if not overrides:
+            return
+        for sid, params in overrides.items():
+            if not isinstance(params, dict):
+                continue
+            if sid not in self._stats:
+                self._stats[sid] = {
+                    'wins': 0,
+                    'losses': 0,
+                    'total': 0,
+                    'total_confidence': 0.0,
+                    'last_updated': None,
+                }
+            clean = {}
+            for k, v in params.items():
+                if isinstance(v, (int, float)):
+                    clean[str(k)] = float(v)
+                elif isinstance(v, bool):
+                    clean[str(k)] = v
+            self._stats[sid]['last_params'] = clean
+            self._stats[sid]['params_updated_at'] = datetime.now().isoformat()
+        self._save()
+        logger.info(f"Parámetros de estrategia persistidos en {PERFORMANCE_FILE} ({len(overrides)} ids)")
 
     def record_trade(self, strategy_name: str, result: str, confidence: float = 0.0) -> None:
         """Record the outcome of a completed trade for a given strategy."""
@@ -120,6 +154,10 @@ class StrategyPerformanceService:
         Each trade dict must have: strategy_used (or strategy_name), result, confidence.
         Called automatically when the bot starts to keep stats fresh.
         """
+        preserved = {
+            sid: {k: v for k, v in (self._stats.get(sid) or {}).items() if k in ('last_params', 'params_updated_at')}
+            for sid in list(self._stats.keys())
+        }
         self._stats = {}
         for t in trade_history:
             strat = t.get('strategy_used') or t.get('strategy_name') or t.get('strategy', '')
@@ -127,6 +165,19 @@ class StrategyPerformanceService:
             conf = float(t.get('confidence') or t.get('confidence_level') or 0)
             if strat and result in ('win', 'loss'):
                 self.record_trade(strat, result, conf)
+        for sid, meta in preserved.items():
+            if not meta:
+                continue
+            if sid not in self._stats:
+                self._stats[sid] = {
+                    'wins': 0,
+                    'losses': 0,
+                    'total': 0,
+                    'total_confidence': 0.0,
+                    'last_updated': None,
+                }
+            self._stats[sid].update(meta)
+        self._save()
         logger.info(f"StrategyPerf rebuilt from {len(trade_history)} trades")
 
     # ------------------------------------------------------------------ #

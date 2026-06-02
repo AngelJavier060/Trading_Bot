@@ -9,8 +9,8 @@ app = create_app()
 
 if __name__ == '__main__':
     debug = os.environ.get("FLASK_DEBUG", "true").lower() == "true"
-    print("🚀 Servidor iniciando...")
-    print("📍 Rutas disponibles:")
+    print("Servidor iniciando...")
+    print("Rutas disponibles:")
     print("   - GET  http://127.0.0.1:5000/test")
     print("   - POST http://127.0.0.1:5000/api/trading/connect")
     print("   - GET  http://127.0.0.1:5000/api/trading/check-connection")

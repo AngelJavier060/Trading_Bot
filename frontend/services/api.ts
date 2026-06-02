@@ -535,12 +535,19 @@ const api = {
   // ==================== MACHINE LEARNING API ====================
 
   getMLStatus: async () => {
-    const response = await fetch(`${BASE_URL}/api/ml/status`);
-    const data = await response.json();
-    if (!response.ok || data.status === 'error') {
-      throw new Error(data.message || 'Error al obtener estado ML');
+    const candidates = ['/api/ml/status', '/api/ml/info', '/api/auto-trainer/status'];
+    for (const path of candidates) {
+      try {
+        const r = await fetch(`${BASE_URL}${path}`);
+        if (r.ok) {
+          const d = await r.json();
+          if (d && d.status !== 'error') return d;
+        }
+      } catch (_) {
+        /* siguiente candidato */
+      }
     }
-    return data;
+    return { status: 'unavailable' };
   },
 
   trainML: async (params: {
@@ -861,21 +868,6 @@ const api = {
       throw new Error(data.message || 'Error al obtener resumen de backtesting');
     }
     return data;
-  },
-
-  getMLStatus: async () => {
-    // Intenta varios endpoints comunes de ML; devuelve datos parciales si alguno responde.
-    const candidates = ['/api/ml/status', '/api/ml/info', '/api/auto-trainer/status'];
-    for (const path of candidates) {
-      try {
-        const r = await fetch(`${BASE_URL}${path}`);
-        if (r.ok) {
-          const d = await r.json();
-          if (d && d.status !== 'error') return d;
-        }
-      } catch (_) { /* continue */ }
-    }
-    return { status: 'unavailable' };
   },
 };
 

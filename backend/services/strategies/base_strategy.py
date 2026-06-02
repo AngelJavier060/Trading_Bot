@@ -113,15 +113,20 @@ class BaseStrategy(ABC):
         pass
     
     @abstractmethod
-    def analyze(self, candles: List[Dict]) -> TradingSignal:
+    def analyze(
+        self,
+        candles: List[Dict],
+        candles_htf: Optional[List[Dict]] = None,
+        *,
+        asset: str = "",
+    ) -> TradingSignal:
         """
         Analyze candles and generate trading signal.
-        
+
         Args:
-            candles: List of OHLCV candles
-            
-        Returns:
-            TradingSignal with signal, confidence, and explanations
+            candles: List of OHLCV candles (timeframe principal, p. ej. 5m).
+            candles_htf: Velas timeframe superior (p. ej. 15m), opcional.
+            asset: Símbolo para estado interno (estrategias multi-activo).
         """
         pass
     

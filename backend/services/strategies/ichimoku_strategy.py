@@ -4,7 +4,7 @@ Ichimoku Cloud Strategy
 Professional Ichimoku Kinko Hyo implementation with cloud analysis.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 import pandas as pd
 from .base_strategy import BaseStrategy, TradingSignal, SignalType, SignalReason
 
@@ -70,7 +70,13 @@ class IchimokuStrategy(BaseStrategy):
         
         return df
     
-    def analyze(self, candles: List[Dict]) -> TradingSignal:
+    def analyze(
+        self,
+        candles: List[Dict],
+        candles_htf: Optional[List[Dict]] = None,
+        *,
+        asset: str = "",
+    ) -> TradingSignal:
         df = self.candles_to_df(candles)
         
         if len(df) < self.min_candles:

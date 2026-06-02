@@ -146,6 +146,18 @@ class MLService:
             }
         
         try:
+            # Misma lista de columnas que al entrenar (evita mismatch 107 vs 100 si el .pkl
+            # trae más features —p. ej. time features con timestamp— o hay carrera con AutoTrainer).
+            exp_names = None
+            if self.is_xgboost_trained and self.xgboost_model and self.xgboost_model.feature_names:
+                exp_names = self.xgboost_model.feature_names
+            elif self.is_lstm_trained and self.lstm_model and getattr(self.lstm_model, 'feature_names', None):
+                exp_names = self.lstm_model.feature_names
+            if exp_names:
+                cur = self.feature_engineer._training_feature_names
+                if not cur or len(cur) != len(exp_names):
+                    self.feature_engineer._training_feature_names = list(exp_names)
+
             # Prepare features
             X = self.feature_engineer.prepare_prediction_data(df)
             
@@ -380,6 +392,12 @@ class MLService:
                 results['lstm'] = 'not found'
         except Exception as e:
             results['lstm'] = f'error: {str(e)}'
+        
+        # Align feature engineering with saved models (avoids XGBoost DMatrix name/count mismatch)
+        if self.is_xgboost_trained and self.xgboost_model and self.xgboost_model.feature_names:
+            self.feature_engineer._training_feature_names = list(self.xgboost_model.feature_names)
+        elif self.is_lstm_trained and self.lstm_model and getattr(self.lstm_model, 'feature_names', None):
+            self.feature_engineer._training_feature_names = list(self.lstm_model.feature_names)
         
         return results
     

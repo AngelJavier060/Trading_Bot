@@ -1,12 +1,14 @@
-import '../styles/globals.css'; // Asegúrate de que Tailwind esté configurado en este archivo.
+import '../styles/globals.css';
 import { AppProps } from 'next/app';
 import { Toaster } from 'react-hot-toast';
 import Head from 'next/head';
 import { ThemeProvider } from '../context/ThemeContext';
+import { PlatformProvider } from '../context/PlatformContext';
 
 function MyApp({ Component, pageProps }: AppProps) {
   return (
     <ThemeProvider>
+      <PlatformProvider>
       <Head>
         <link rel="icon" href="/favicon.ico" />
         <title>AI Trading System</title>
@@ -32,8 +34,9 @@ function MyApp({ Component, pageProps }: AppProps) {
               background: '#ef4444',
             },
           },
-        }}
+                }}
       />
+      </PlatformProvider>
     </ThemeProvider>
   );
 }

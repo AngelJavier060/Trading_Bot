@@ -1,35 +1,27 @@
 [
   {
-    "trade_id": "T1777142274395",
-    "timestamp": "2026-04-25T13:37:54.395718",
+    "trade_id": "T1778351080663",
+    "timestamp": "2026-05-09T13:24:40.663735",
     "symbol": "USDJPY-OTC",
-    "direction": "call",
-    "confidence": 71.4,
-    "strategy": "macd",
+    "direction": "put",
+    "confidence": 85.0,
+    "strategy": "ema_rsi",
     "indicators": {
-      "macd": 0.038805445237727554,
-      "macd_signal": 0.03722546706160286,
-      "histogram": 0.001579978176124694,
-      "macd_above_zero": "True",
-      "close": 158.60235,
-      "bb_upper": 158.67583033022657,
-      "bb_middle": 158.507945,
-      "bb_lower": 158.34005966977344,
-      "bandwidth": 0.2118320696499698,
-      "percent_b": 0.7811591693943463,
-      "is_squeeze": "True"
+      "ema_fast": 155.18680655397176,
+      "ema_slow": 155.18953771858645,
+      "ema_separation": -0.0017598896516075714,
+      "rsi": 42.62299529342896,
+      "close": 155.13305
     },
     "reasons": [
-      "MACD cruz\u00f3 por encima de la l\u00ednea de se\u00f1al",
-      "Histograma girando positivo",
-      "MACD en zona positiva",
-      "Precio tocando/debajo banda inferior",
-      "Volatilidad comprimida (BW=0.21%)",
-      "Precio sobre media m\u00f3vil (tendencia alcista)"
+      "EMA r\u00e1pida (9) < EMA lenta (21)",
+      "Cruce bajista reciente",
+      "RSI en zona neutral (40-60)",
+      "RSI < 50 confirma tendencia bajista"
     ],
-    "entry_price": 158.60235,
-    "exit_price": 158.59495,
-    "pnl": -5.0,
+    "entry_price": 155.13865,
+    "exit_price": 155.18545,
+    "pnl": -10.0,
     "analysis": {
       "possible_causes": [
         "Volatilidad del mercado o movimiento inesperado"
@@ -40,36 +32,28 @@
     }
   },
   {
-    "trade_id": "T1777142313820",
-    "timestamp": "2026-04-25T13:38:33.820808",
+    "trade_id": "T1778351151646",
+    "timestamp": "2026-05-09T13:25:51.646104",
     "symbol": "USDJPY-OTC",
-    "direction": "call",
-    "confidence": 71.4,
-    "strategy": "macd",
+    "direction": "put",
+    "confidence": 85.0,
+    "strategy": "ema_rsi",
     "indicators": {
-      "macd": 0.039124533556787355,
-      "macd_signal": 0.03728928472541482,
-      "histogram": 0.001835248831372538,
-      "macd_above_zero": "True",
-      "close": 158.60635,
-      "bb_upper": 158.6765126988024,
-      "bb_middle": 158.50814499999998,
-      "bb_lower": 158.33977730119756,
-      "bandwidth": 0.21244043806383253,
-      "percent_b": 0.7916384814264367,
-      "is_squeeze": "True"
+      "ema_fast": 155.18319124317742,
+      "ema_slow": 155.18792478550333,
+      "ema_separation": -0.0030502001572938614,
+      "rsi": 43.90709201972856,
+      "close": 155.14625
     },
     "reasons": [
-      "MACD cruz\u00f3 por encima de la l\u00ednea de se\u00f1al",
-      "Histograma girando positivo",
-      "MACD en zona positiva",
-      "Precio tocando/debajo banda inferior",
-      "Volatilidad comprimida (BW=0.21%)",
-      "Precio sobre media m\u00f3vil (tendencia alcista)"
+      "EMA r\u00e1pida (9) < EMA lenta (21)",
+      "Cruce bajista reciente",
+      "RSI en zona neutral (40-60)",
+      "RSI < 50 confirma tendencia bajista"
     ],
-    "entry_price": 158.60635,
-    "exit_price": 158.56395,
-    "pnl": -5.0,
+    "entry_price": 155.14485,
+    "exit_price": 155.14865,
+    "pnl": -10.0,
     "analysis": {
       "possible_causes": [
         "Volatilidad del mercado o movimiento inesperado"
@@ -80,36 +64,28 @@
     }
   },
   {
-    "trade_id": "T1777142353520",
-    "timestamp": "2026-04-25T13:39:13.520992",
+    "trade_id": "T1778351397087",
+    "timestamp": "2026-05-09T13:29:57.087894",
     "symbol": "USDJPY-OTC",
-    "direction": "call",
-    "confidence": 71.4,
-    "strategy": "macd",
+    "direction": "put",
+    "confidence": 85.0,
+    "strategy": "ema_rsi",
     "indicators": {
-      "macd": 0.03793592956819225,
-      "macd_signal": 0.0370515639276958,
-      "histogram": 0.0008843656404964526,
-      "macd_above_zero": "True",
-      "close": 158.59145,
-      "bb_upper": 158.67406126377213,
-      "bb_middle": 158.5074,
-      "bb_lower": 158.34073873622785,
-      "bandwidth": 0.2102883067568346,
-      "percent_b": 0.7521581743041739,
-      "is_squeeze": "True"
+      "ema_fast": 155.18947124317742,
+      "ema_slow": 155.1907793309579,
+      "ema_separation": -0.0008428901421281749,
+      "rsi": 48.1409329909714,
+      "close": 155.17765
     },
     "reasons": [
-      "MACD cruz\u00f3 por encima de la l\u00ednea de se\u00f1al",
-      "Histograma girando positivo",
-      "MACD en zona positiva",
-      "Precio tocando/debajo banda inferior",
-      "Volatilidad comprimida (BW=0.21%)",
-      "Precio sobre media m\u00f3vil (tendencia alcista)"
+      "EMA r\u00e1pida (9) < EMA lenta (21)",
+      "Cruce bajista reciente",
+      "RSI en zona neutral (40-60)",
+      "RSI < 50 confirma tendencia bajista"
     ],
-    "entry_price": 158.59145,
-    "exit_price": 158.56945,
-    "pnl": -5.0,
+    "entry_price": 155.17765,
+    "exit_price": 155.20265,
+    "pnl": -10.0,
     "analysis": {
       "possible_causes": [
         "Volatilidad del mercado o movimiento inesperado"

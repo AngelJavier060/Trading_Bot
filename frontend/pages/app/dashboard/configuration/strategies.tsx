@@ -108,7 +108,15 @@ export default function StrategiesConfiguration() {
     setRiskConfig(prev => ({ ...prev, ...partial }));
   
   // New strategy form
-  const [newStrategy, setNewStrategy] = useState({
+  const [newStrategy, setNewStrategy] = useState<{
+    name: string;
+    display_name: string;
+    description: string;
+    min_confidence: number;
+    allowed_timeframes: string[];
+    indicators_config: Record<string, Record<string, unknown>>;
+    entry_rules: Record<string, unknown>;
+  }>({
     name: '',
     display_name: '',
     description: '',

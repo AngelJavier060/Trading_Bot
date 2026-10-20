@@ -1,9 +1,0 @@
-{
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*", "./frontend/*"],
-      "@/services/*": ["./frontend/services/*"]
-    }
-  }
-} 

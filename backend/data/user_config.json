@@ -1,6 +1,0 @@
-{
-    "strategy": "Simple Moving Average",
-    "timeframe": "1m",
-    "marketType": "Binarias",
-    "risk": 10
-}

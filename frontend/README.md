@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TradeBot MT5 — Frontend (Next.js)
 
-## Getting Started
+Panel web del sistema. Consume la API del backend (`backend/`); no accede a MT5 ni
+a la base de datos directamente.
 
-First, run the development server:
+## Puesta en marcha
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```powershell
+cd frontend
+npm install
+copy NUL .env.local          # y escribe: NEXT_PUBLIC_API_URL=http://127.0.0.1:5000
+npm run dev                  # desarrollo: http://localhost:3000
+npm run build; npm run start # producción
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`NEXT_PUBLIC_API_URL` se fija al compilar: si cambias la URL del backend, vuelve a ejecutar `npm run build`.
+El backend debe incluir el origen del panel en `FRONTEND_ORIGINS` (CORS).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Páginas
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Ruta | Qué hace |
+|---|---|
+| `/login` | Inicio de sesión. La primera vez, crea el usuario administrador |
+| `/` | Resumen: cuenta, P&L, equity, posiciones, último análisis por símbolo (en vivo) |
+| `/estrategia` | Elegir, configurar, probar (backtest), validar (walk-forward) e iniciar el bot |
+| `/grafico` | Velas de MT5 con las señales del bot y los niveles SL/TP |
+| `/senales`, `/operaciones` | Historial de señales (en vivo) y operaciones con su resultado |
+| `/pruebas`, `/experimentos` | Walk-forward, vivo contra backtest, veredictos y aprobación de cambios |
+| `/cuenta` | Conectar o cambiar la cuenta MT5 (demo/real, cuentas guardadas) |
+| `/eventos`, `/ajustes` | Diario del sistema; contraseña, usuarios y configuración en JSON |
 
-## Learn More
+## Estructura
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/lib/api.ts       cliente de la API (token de sesión, errores, tareas en segundo plano)
+src/lib/system.tsx   estado en vivo compartido (canal /api/stream, Server-Sent Events)
+src/lib/types.ts     tipos de los datos del backend
+src/components/      interfaz reutilizable y gráficos (lightweight-charts de TradingView)
+src/app/login/       inicio de sesión
+src/app/(panel)/     páginas protegidas con el menú lateral
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Comprobaciones: `npm run lint` y `npm run build` (incluye la verificación de tipos de TypeScript).

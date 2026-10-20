@@ -1,0 +1,46 @@
+{
+  "version": "1.0.0",
+  "schema": "v1",
+
+  "mergeBehaviour": "mergeModels",
+
+  "models": [
+    {
+      "title": "DeepSeek R1 (project)",
+      "provider": "deepseek",
+      "model": "deepseek-reasoner",
+      "apiKey": "sk-11f771a7b16c420eb75425f9da31e0a1",
+      "contextLength": 65536,
+      "completionOptions": {
+        "maxTokens": 4096,
+        "temperature": 0.7,
+        "topP": 0.95
+      },
+      "description": "R1 - deep reasoning, ideal for bug analysis and complex refactors"
+    },
+    {
+      "title": "DeepSeek V4 Pro (project)",
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "apiKey": "sk-11f771a7b16c420eb75425f9da31e0a1",
+      "contextLength": 131072,
+      "completionOptions": {
+        "maxTokens": 8192,
+        "temperature": 0.3,
+        "topP": 0.9
+      },
+      "description": "V4 Pro - code generation and fast analysis, optimized for Trading Bot project"
+    }
+  ],
+
+  "tabAutocompleteModel": {
+    "title": "DeepSeek V4 Pro (autocomplete)",
+    "provider": "deepseek",
+    "model": "deepseek-v4-pro",
+    "apiKey": "sk-11f771a7b16c420eb75425f9da31e0a1"
+  },
+
+  "experimental": {
+    "modelSwitching": true
+  }
+}
